@@ -1,10 +1,6 @@
 import Foundation
 
 struct PetTheme: Hashable, Identifiable {
-    private struct Manifest: Decodable {
-        let name: String
-    }
-
     let id: String
     let title: String
 
@@ -22,11 +18,20 @@ struct PetTheme: Hashable, Identifiable {
         return folders.compactMap { folder in
             guard (try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true,
                   let data = try? Data(contentsOf: folder.appendingPathComponent("manifest.json")),
-                  let manifest = try? JSONDecoder().decode(Manifest.self, from: data) else { return nil }
+                  let manifest = try? JSONDecoder().decode(SpriteManifest.self, from: data),
+                  EnergyTier.allCases.allSatisfy({ tier in
+                      guard let file = manifest.tiers[tier.rawValue]?.file else { return false }
+                      return FileManager.default.fileExists(
+                          atPath: folder.appendingPathComponent(file).path
+                      )
+                  }) else { return nil }
             return PetTheme(id: folder.lastPathComponent, title: manifest.name)
         }
         .sorted { $0.id < $1.id }
     }()
 
-    static let defaultTheme = available.first(where: { $0.id == "chick" }) ?? available[0]
+    static let defaultTheme: PetTheme =
+        available.first(where: { $0.id == "chick" })
+        ?? available.first
+        ?? PetTheme(id: "chick", title: "Chick")
 }

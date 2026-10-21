@@ -54,8 +54,11 @@ final class AgentPetModel: ObservableObject {
         let savedTheme = PetTheme.available.first { $0.id == savedThemeID } ?? PetTheme.defaultTheme
         if SpriteAssets.shared.selectTheme(savedTheme) {
             selectedTheme = savedTheme
+        } else if let activeTheme = SpriteAssets.shared.activeTheme {
+            selectedTheme = activeTheme
         } else {
-            selectedTheme = SpriteAssets.shared.activeTheme ?? PetTheme.defaultTheme
+            selectedTheme = PetTheme.defaultTheme
+            settingsError = "No usable mascot theme is bundled with this app."
         }
     }
 
@@ -339,7 +342,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard !terminationPending else { return .terminateNow }
+        guard !terminationPending else { return .terminateLater }
         terminationPending = true
         Task { @MainActor in
             await model.shutdown()

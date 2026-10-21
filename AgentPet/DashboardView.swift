@@ -152,7 +152,10 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Pet") {
-                if PetTheme.available.count == 1 {
+                if !PetTheme.available.contains(model.selectedTheme)
+                    || SpriteAssets.shared.activeTheme != model.selectedTheme {
+                    LabeledContent("Mascot", value: "Unavailable")
+                } else if PetTheme.available.count == 1 {
                     LabeledContent("Mascot", value: model.selectedTheme.title)
                 } else {
                     Picker(

@@ -6,3 +6,9 @@ DerivedData/
 dist/
 *.dmg
 *.xcarchive
+/assets/Coder-ArtKit/gifs/
+/assets/Coder-ArtKit/strips/
+/assets/Coder-ArtKit/previews/
+/assets/Coder-ArtKit/Themes/coder/
+/assets/Coder-ArtKit/energy.png
+/assets/Coder-ArtKit/states.png

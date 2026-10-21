@@ -28,7 +28,7 @@ struct SpriteManifest: Decodable {
     }
     struct Animation: Decodable { let row: Int; let frames: Int; let fps: Double; let loop: Bool; let tiers: [String] }
     struct Transition: Decodable { let row: Int; let frames: Int; let fps: Double; let loop: Bool; let tiers: [String]; let from: String; let to: String }
-    struct Bubble: Decodable { let file: String; let size: [Int]; let showOnlyWhenRunningCountAbove: Int; let numberPosition: [Int] }
+    struct Bubble: Decodable { let file: String; let size: [Int]; let showOnlyWhenRunningCountAbove: Int }
     struct HUD: Decodable {
         let file: String
         let size: [Int]
@@ -53,6 +53,7 @@ struct SpriteManifest: Decodable {
         let idleActivities: [IdleActivity]
     }
 
+    let name: String
     let frameSize: Size
     let columns: Int
     let framesPerAnimation: Int
@@ -248,6 +249,7 @@ private struct PlaybackStep: ExpressibleByStringLiteral {
 }
 
 private struct PetVisualContext: Equatable {
+    let themeID: String
     let baseKey: String
     let tier: EnergyTier?
     let runningCount: Int
@@ -274,6 +276,10 @@ private final class PetAnimationCoordinator: ObservableObject {
     var isPaused: Bool { context?.isPaused == true }
 
     func update(_ next: PetVisualContext) {
+        if let context, context.themeID != next.themeID {
+            resetForTheme(next)
+            return
+        }
         let previous = context
         context = next
         let eventChanged = previous?.change?.revision != next.change?.revision && next.change != nil
@@ -353,12 +359,11 @@ private final class PetAnimationCoordinator: ObservableObject {
         cancelActivityTask()
         sequence.removeAll()
         sequenceIndex = 0
-        dragging = false
-        hovering = false
         lastIdleActivity = nil
         idleSince = Date()
         context = next
-        show(next.isPaused ? "paused" : next.baseKey, tier: next.tier)
+        let key = next.isPaused ? "paused" : dragging ? "dragging" : hovering ? "hovering" : next.baseKey
+        show(key, tier: next.tier)
         scheduleIdleActivity()
     }
 
@@ -493,7 +498,8 @@ private final class PetAnimationCoordinator: ObservableObject {
         assets.clip(named: playback.key)?.from ?? playback.key
     }
 
-    private func playSequence(_ steps: [PlaybackStep], fallback: String, startingAt initialState: String? = nil) {
+    @discardableResult
+    private func playSequence(_ steps: [PlaybackStep], fallback: String, startingAt initialState: String? = nil) -> Double {
         sequence.removeAll()
         var target = initialState ?? visualState
         let finiteLoopStates: Set<String> = [
@@ -512,9 +518,12 @@ private final class PetAnimationCoordinator: ObservableObject {
         guard !sequence.isEmpty else {
             sequence.removeAll()
             show(fallback, tier: context?.tier)
-            return
+            return 0
         }
         show(sequence[0].key, tier: context?.tier, holdSeconds: sequence[0].holdSeconds)
+        return sequence.reduce(0) { duration, step in
+            duration + (step.holdSeconds ?? assets.duration(for: step.key, tier: context?.tier))
+        }
     }
 
     private func show(_ key: String, tier: EnergyTier?, holdSeconds: Double? = nil) {
@@ -534,50 +543,42 @@ private final class PetAnimationCoordinator: ObservableObject {
               sequence.isEmpty,
               !hovering,
               !dragging else { return }
-        if context.baseKey == "typing", context.needsInputCount == 0 {
-            activityTaskRunning = true
-            idleTask = Task { [weak self] in
-                do {
-                    try await Task.sleep(for: .seconds(Double.random(in: 25...45)))
-                    guard let self, !Task.isCancelled,
-                          self.context?.baseKey == "typing",
-                          (self.context?.runningCount ?? 0) > 0 else { return }
-                    self.playSequence(["think", "resume_typing"], fallback: "typing")
-                    let duration = ["think", "resume_typing"]
-                        .map { self.assets.duration(for: $0, tier: self.context?.tier) }
-                        .reduce(0, +)
-                    try await Task.sleep(for: .seconds(duration))
-                    guard !Task.isCancelled else { return }
-                    self.activityTaskRunning = false
-                    self.scheduleIdleActivity()
-                } catch {}
-            }
-            return
-        }
-        guard context.baseKey == "idle",
-              context.runningCount == 0,
-              context.needsInputCount == 0 else { return }
-        let initialDelay = assets.manifest?.logic.idleActivityAfterSeconds ?? 55
+        let isTyping = context.baseKey == "typing" && context.needsInputCount == 0
+        guard isTyping || (context.baseKey == "idle" && context.runningCount == 0 && context.needsInputCount == 0) else { return }
+        let initialDelay = isTyping ? Double.random(in: 25...45) : assets.manifest?.logic.idleActivityAfterSeconds ?? 55
         activityTaskRunning = true
         idleTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                if !Task.isCancelled {
+                    self.idleTask = nil
+                    self.activityTaskRunning = false
+                }
+            }
             do {
                 try await Task.sleep(for: .seconds(initialDelay))
                 while !Task.isCancelled {
-                    guard let self, self.context?.baseKey == "idle",
-                          self.context?.runningCount == 0,
-                          self.context?.needsInputCount == 0,
-                          !self.isPaused,
+                    guard let current = self.context,
+                          !current.isPaused,
                           !self.hovering,
                           !self.dragging,
                           self.sequence.isEmpty else { return }
+                    if isTyping {
+                        guard current.baseKey == "typing", current.needsInputCount == 0, current.runningCount > 0 else { return }
+                        let duration = self.playSequence(["think", "resume_typing"], fallback: "typing")
+                        try await Task.sleep(for: .seconds(duration))
+                        try await Task.sleep(for: .seconds(Double.random(in: 25...45)))
+                        continue
+                    }
+                    guard current.baseKey == "idle", current.runningCount == 0, current.needsInputCount == 0 else { return }
                     if Date().timeIntervalSince(self.idleSince) >= 300 {
                         self.playSequence(["sleep", "sleeping"], fallback: "idle")
-                        self.activityTaskRunning = false
                         return
                     }
-                    let activities = (self.assets.manifest?.logic.idleActivities ?? [])
+                    let availableActivities = self.assets.manifest?.logic.idleActivities ?? []
+                    let activities = availableActivities
                         .filter { $0.name != self.lastIdleActivity }
-                    guard let activity = activities.randomElement() else { return }
+                    guard let activity = (activities.isEmpty ? availableActivities : activities).randomElement() else { return }
                     self.lastIdleActivity = activity.name
                     let holdSeconds: Double? = activity.holdSecondsRange.flatMap { range -> Double? in
                         guard range.count == 2 else { return nil }
@@ -590,11 +591,7 @@ private final class PetAnimationCoordinator: ObservableObject {
                             : nil
                         return PlaybackStep(key, holdSeconds: hold)
                     }
-                    self.playSequence(steps, fallback: "idle")
-                    let duration = activity.steps.enumerated().map { index, key in
-                        if index == lastStep, let holdSeconds { return holdSeconds }
-                        return self.assets.duration(for: key, tier: self.context?.tier)
-                    }.reduce(0.0, +)
+                    let duration = self.playSequence(steps, fallback: "idle")
                     let interval = self.assets.manifest?.logic.idleActivityIntervalSeconds ?? [45, 125]
                     let wait = Double.random(in: interval[0]...interval[1])
                     try await Task.sleep(for: .seconds(duration + wait))
@@ -628,6 +625,7 @@ struct PetView: View {
 
     private var visualContext: PetVisualContext {
         PetVisualContext(
+            themeID: model.selectedTheme.id,
             baseKey: model.petState.animationKey,
             tier: energyTier,
             runningCount: sessions.runningCount,
@@ -701,7 +699,6 @@ struct PetView: View {
         .preferredColorScheme(model.appearance.colorScheme)
         .onAppear { animator.update(visualContext) }
         .onChange(of: visualContext) { _, context in animator.update(context) }
-        .onChange(of: model.selectedTheme) { _, _ in animator.resetForTheme(visualContext) }
         .task(id: animator.playback.id) {
             let playback = animator.playback
             guard let clip = SpriteAssets.shared.clip(named: playback.key) else { return }

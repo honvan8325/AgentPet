@@ -1078,11 +1078,7 @@
         20,
         19
       ],
-      "showOnlyWhenRunningCountAbove": 0,
-      "numberPosition": [
-        6,
-        5
-      ]
+      "showOnlyWhenRunningCountAbove": 0
     },
     "pixelFont": "Shared/digits.png",
     "pixelFontGlyphs": "0123456789",

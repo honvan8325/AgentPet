@@ -79,7 +79,7 @@ Pausing AgentPet affects its animation only; it does not pause Codex tasks.
 
 ## Mascot Themes
 
-Mascot themes are discovered from folders in `AgentPet/Resources/Themes/`. Each folder provides a `manifest.json` and its energy atlases; adding a theme folder makes it available in Settings without changing Swift code. Chick remains the default mascot. Changing mascots changes appearance and animations without changing the Codex integration.
+The app includes three mascots: Chick, Coder, and Axolotl. Themes are discovered from valid folders in `AgentPet/Resources/Themes/`; each folder must provide a `manifest.json` and all five energy atlases. Adding a complete theme folder makes it available in Settings without changing Swift code. Chick remains the default mascot. Changing mascots changes appearance and animations without changing Codex integration or task state. Theme archives in `assets/` are source material and are not included in the app until their theme folder is bundled in the app resources.
 
 ## Codex integration and privacy
 
