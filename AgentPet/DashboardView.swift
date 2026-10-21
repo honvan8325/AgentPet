@@ -152,10 +152,25 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Pet") {
+                if PetTheme.available.count == 1 {
+                    LabeledContent("Mascot", value: model.selectedTheme.title)
+                } else {
+                    Picker(
+                        "Mascot",
+                        selection: Binding(
+                            get: { model.selectedTheme },
+                            set: { model.selectTheme($0) }
+                        )
+                    ) {
+                        ForEach(PetTheme.available) { theme in
+                            Text(theme.title).tag(theme)
+                        }
+                    }
+                }
                 Picker("Size", selection: $model.petSize) {
                     ForEach(PetSize.allCases) { size in Text(size.title).tag(size) }
                 }
-                Toggle("Show pixel HUD below the chick", isOn: $model.showUsageHUD)
+                Toggle("Show usage HUD", isOn: $model.showUsageHUD)
                 Toggle("Pause AgentPet", isOn: $model.isPetPaused)
                     .help("Pauses AgentPet's animation and behavior only. Codex tasks continue running.")
                 Picker("Appearance", selection: $model.appearance) {

@@ -1,5 +1,5 @@
 {
-  "name": "AgentPet",
+  "name": "Coder",
   "frameSize": {
     "width": 96,
     "height": 96
@@ -12,11 +12,18 @@
   ],
   "scaling": "nearest",
   "character": {
-    "species": "yellow_chick",
-    "headwear": "small_white_eggshell_cap",
-    "headphones": false,
+    "species": "human_pixel_chibi",
+    "reference": "user-provided photo",
+    "hair": "black_side_parted",
+    "eyewear": "black_rectangular_glasses",
+    "outfit": "light_blue_button_shirt",
+    "accessories": [
+      "black_crossbody_bag",
+      "smartphone",
+      "peace_sign"
+    ],
     "workDevice": "mini_laptop",
-    "twoWingsOnly": true
+    "exactlyTwoArms": true
   },
   "tiers": {
     "fresh": {
@@ -24,7 +31,7 @@
         75,
         100
       ],
-      "file": "atlas/fresh.png",
+      "file": "fresh.png",
       "width": 768,
       "height": 6528,
       "animationSpeedMultiplier": 1
@@ -34,7 +41,7 @@
         45,
         74
       ],
-      "file": "atlas/focused.png",
+      "file": "focused.png",
       "width": 768,
       "height": 6528,
       "animationSpeedMultiplier": 0.9
@@ -44,7 +51,7 @@
         20,
         44
       ],
-      "file": "atlas/tired.png",
+      "file": "tired.png",
       "width": 768,
       "height": 6528,
       "animationSpeedMultiplier": 0.75
@@ -54,7 +61,7 @@
         1,
         19
       ],
-      "file": "atlas/exhausted.png",
+      "file": "exhausted.png",
       "width": 768,
       "height": 6528,
       "animationSpeedMultiplier": 0.6
@@ -64,7 +71,7 @@
         0,
         0
       ],
-      "file": "atlas/empty.png",
+      "file": "empty.png",
       "width": 768,
       "height": 6528,
       "animationSpeedMultiplier": 0.45
@@ -370,19 +377,6 @@
         "empty"
       ]
     },
-    "cap_adjust": {
-      "row": 23,
-      "frames": 8,
-      "fps": 7,
-      "loop": false,
-      "tiers": [
-        "fresh",
-        "focused",
-        "tired",
-        "exhausted",
-        "empty"
-      ]
-    },
     "booped": {
       "row": 24,
       "frames": 8,
@@ -452,6 +446,19 @@
       "row": 29,
       "frames": 8,
       "fps": 10,
+      "loop": false,
+      "tiers": [
+        "fresh",
+        "focused",
+        "tired",
+        "exhausted",
+        "empty"
+      ]
+    },
+    "glasses_adjust": {
+      "row": 23,
+      "frames": 8,
+      "fps": 7,
       "loop": false,
       "tiers": [
         "fresh",
@@ -868,21 +875,6 @@
       "from": "idle",
       "to": "tiny_dance"
     },
-    "adjust_cap": {
-      "row": 57,
-      "frames": 8,
-      "fps": 10,
-      "loop": false,
-      "tiers": [
-        "fresh",
-        "focused",
-        "tired",
-        "exhausted",
-        "empty"
-      ],
-      "from": "idle",
-      "to": "cap_adjust"
-    },
     "hover": {
       "row": 58,
       "frames": 8,
@@ -1032,10 +1024,25 @@
       ],
       "from": "landing",
       "to": "idle"
+    },
+    "adjust_glasses": {
+      "row": 57,
+      "frames": 8,
+      "fps": 10,
+      "loop": false,
+      "tiers": [
+        "fresh",
+        "focused",
+        "tired",
+        "exhausted",
+        "empty"
+      ],
+      "from": "idle",
+      "to": "glasses_adjust"
     }
   },
   "hud": {
-    "file": "hud/bars.png",
+    "file": "Shared/bars.png",
     "size": [
       36,
       14
@@ -1066,7 +1073,7 @@
     "showPercent": false,
     "showOuterPanel": false,
     "taskBubble": {
-      "file": "hud/task_bubble.png",
+      "file": "Shared/task_bubble.png",
       "size": [
         20,
         19
@@ -1077,7 +1084,7 @@
         5
       ]
     },
-    "pixelFont": "hud/digits.png",
+    "pixelFont": "Shared/digits.png",
     "pixelFontGlyphs": "0123456789",
     "dynamicValues": true
   },
@@ -1086,13 +1093,59 @@
     "missingUsage": "keep_neutral",
     "runningBubbleOnlyWhenCountPositive": true,
     "idleActivities": [
-      "stretching",
-      "yawning",
-      "coffee_break",
-      "looking_around",
-      "tiny_dance",
-      "cap_adjust",
-      "walking"
+      {
+        "name": "stretching",
+        "steps": [
+          "stretch",
+          "stretching",
+          "stretch_finish"
+        ]
+      },
+      {
+        "name": "yawning",
+        "steps": [
+          "yawn",
+          "yawning"
+        ]
+      },
+      {
+        "name": "coffee_break",
+        "steps": [
+          "caffeinate",
+          "coffee_break"
+        ]
+      },
+      {
+        "name": "looking_around",
+        "steps": [
+          "look",
+          "looking_around"
+        ]
+      },
+      {
+        "name": "tiny_dance",
+        "steps": [
+          "dance",
+          "tiny_dance"
+        ]
+      },
+      {
+        "name": "glasses_adjust",
+        "steps": [
+          "adjust_glasses",
+          "glasses_adjust"
+        ]
+      },
+      {
+        "name": "walking",
+        "steps": [
+          "walking"
+        ],
+        "holdSecondsRange": [
+          1,
+          2
+        ]
+      }
     ],
     "idleActivityAfterSeconds": 55,
     "idleActivityIntervalSeconds": [
@@ -1109,5 +1162,12 @@
     "needsInput": "needs_input",
     "running": "typing",
     "energyVariantsForAllAnimations": true
+  },
+  "layout": {
+    "bubbleOffset": {
+      "x": -11,
+      "y": 8
+    },
+    "hudOffsetY": -6
   }
 }

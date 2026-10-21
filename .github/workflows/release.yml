@@ -122,8 +122,31 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")" = "$VERSION"
           test "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist")" = "$SPARKLE_PUBLIC_ED_KEY"
           test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$APP/Contents/Info.plist")" = "$SU_FEED_URL"
-          for atlas in fresh focused tired exhausted empty; do
-            test -f "$APP/Contents/Resources/$atlas.png"
+          RESOURCES="$APP/Contents/Resources"
+          test -f "$RESOURCES/AgentPetTemplate-18.png"
+
+          shopt -s nullglob
+          THEME_DIRS=("$RESOURCES"/Themes/*/)
+          test "${#THEME_DIRS[@]}" -gt 0
+          for theme_dir in "${THEME_DIRS[@]}"; do
+            manifest="${theme_dir}manifest.json"
+            test -f "$manifest"
+            jq -e '(.tiers | type == "object") and (.tiers | length > 0)' "$manifest" >/dev/null
+            while IFS= read -r atlas; do
+              test -f "$theme_dir/$atlas"
+            done < <(jq -r '.tiers[].file' "$manifest" | sort -u)
+          done
+
+          for image in \
+            bars \
+            digits \
+            fill_green \
+            fill_amber \
+            fill_red \
+            fill_empty \
+            task_bubble
+          do
+            test -f "$RESOURCES/Shared/$image.png"
           done
           test -d "$APP/Contents/Frameworks/Sparkle.framework"
           test "$(lipo -archs "$HELPER")" = "arm64"

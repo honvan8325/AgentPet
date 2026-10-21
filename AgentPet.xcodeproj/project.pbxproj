@@ -14,23 +14,13 @@
 		A10000000000000000000006 /* PetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* PetView.swift */; };
 		A10000000000000000000007 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* DashboardView.swift */; };
 		A10000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* Assets.xcassets */; };
-		A10000000000000000000009 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* manifest.json */; };
-		A1000000000000000000000A /* fresh.png in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* fresh.png */; };
 		A1000000000000000000000C /* AgentPetTemplate-18.png in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000C /* AgentPetTemplate-18.png */; };
-		A1000000000000000000000D /* focused.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* focused.png */; };
-		A1000000000000000000000E /* tired.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* tired.png */; };
-		A1000000000000000000000F /* exhausted.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000012 /* exhausted.png */; };
-		A10000000000000000000010 /* empty.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* empty.png */; };
-		A10000000000000000000011 /* bars.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* bars.png */; };
-		A10000000000000000000012 /* fill_green.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000015 /* fill_green.png */; };
-		A10000000000000000000013 /* fill_amber.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000016 /* fill_amber.png */; };
-		A10000000000000000000014 /* fill_red.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000017 /* fill_red.png */; };
-		A10000000000000000000015 /* fill_empty.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000018 /* fill_empty.png */; };
-		A10000000000000000000016 /* digits.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000019 /* digits.png */; };
-		A10000000000000000000017 /* task_bubble.png in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001A /* task_bubble.png */; };
 		A10000000000000000000018 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000002 /* Sparkle */; };
 		A10000000000000000000019 /* AgentPetHook in Embed Helpers */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001C /* AgentPetHook */; settings = {ATTRIBUTES = (CodeSignOnCopy,); }; };
 		A1000000000000000000001A /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001B /* main.swift */; };
+		A1000000000000000000001B /* PetTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000020 /* PetTheme.swift */; };
+		A1000000000000000000001C /* Shared in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000021 /* Shared */; };
+		A1000000000000000000001D /* Themes in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000022 /* Themes */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,20 +32,10 @@
 		A20000000000000000000006 /* PetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetView.swift; sourceTree = "<group>"; };
 		A20000000000000000000007 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		A20000000000000000000008 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		A20000000000000000000009 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = manifest.json; sourceTree = "<group>"; };
-		A2000000000000000000000A /* fresh.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = fresh.png; sourceTree = "<group>"; };
 		A2000000000000000000000C /* AgentPetTemplate-18.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AgentPetTemplate-18.png; sourceTree = "<group>"; };
-		A20000000000000000000010 /* focused.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = focused.png; sourceTree = "<group>"; };
-		A20000000000000000000011 /* tired.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = tired.png; sourceTree = "<group>"; };
-		A20000000000000000000012 /* exhausted.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = exhausted.png; sourceTree = "<group>"; };
-		A20000000000000000000013 /* empty.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = empty.png; sourceTree = "<group>"; };
-		A20000000000000000000014 /* bars.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = bars.png; sourceTree = "<group>"; };
-		A20000000000000000000015 /* fill_green.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = fill_green.png; sourceTree = "<group>"; };
-		A20000000000000000000016 /* fill_amber.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = fill_amber.png; sourceTree = "<group>"; };
-		A20000000000000000000017 /* fill_red.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = fill_red.png; sourceTree = "<group>"; };
-		A20000000000000000000018 /* fill_empty.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = fill_empty.png; sourceTree = "<group>"; };
-		A20000000000000000000019 /* digits.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = digits.png; sourceTree = "<group>"; };
-		A2000000000000000000001A /* task_bubble.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = task_bubble.png; sourceTree = "<group>"; };
+		A20000000000000000000020 /* PetTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetTheme.swift; sourceTree = "<group>"; };
+		A20000000000000000000021 /* Shared */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Shared; sourceTree = "<group>"; };
+		A20000000000000000000022 /* Themes */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Themes; sourceTree = "<group>"; };
 		A2000000000000000000000D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A2000000000000000000000E /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = SOURCE_ROOT; };
 		A2000000000000000000000F /* AgentPet.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AgentPet.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -85,6 +65,7 @@
 			sourceTree = "<group>";
 			children = (
 				A20000000000000000000001 /* AgentPetApp.swift */,
+				A20000000000000000000020 /* PetTheme.swift */,
 				A20000000000000000000002 /* CodexClient.swift */,
 				A20000000000000000000003 /* SessionStore.swift */,
 				A20000000000000000000004 /* HookIntegration.swift */,
@@ -103,20 +84,9 @@
 			path = Resources;
 			sourceTree = "<group>";
 			children = (
-				A20000000000000000000009 /* manifest.json */,
 				A2000000000000000000000C /* AgentPetTemplate-18.png */,
-				A2000000000000000000000A /* fresh.png */,
-				A20000000000000000000010 /* focused.png */,
-				A20000000000000000000011 /* tired.png */,
-				A20000000000000000000012 /* exhausted.png */,
-				A20000000000000000000013 /* empty.png */,
-				A20000000000000000000014 /* bars.png */,
-				A20000000000000000000015 /* fill_green.png */,
-				A20000000000000000000016 /* fill_amber.png */,
-				A20000000000000000000017 /* fill_red.png */,
-				A20000000000000000000018 /* fill_empty.png */,
-				A20000000000000000000019 /* digits.png */,
-				A2000000000000000000001A /* task_bubble.png */,
+				A20000000000000000000021 /* Shared */,
+				A20000000000000000000022 /* Themes */,
 			);
 		};
 /* End PBXGroup section */
@@ -188,20 +158,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000008 /* Assets.xcassets in Resources */,
-				A10000000000000000000009 /* manifest.json in Resources */,
-				A1000000000000000000000A /* fresh.png in Resources */,
 				A1000000000000000000000C /* AgentPetTemplate-18.png in Resources */,
-				A1000000000000000000000D /* focused.png in Resources */,
-				A1000000000000000000000E /* tired.png in Resources */,
-				A1000000000000000000000F /* exhausted.png in Resources */,
-				A10000000000000000000010 /* empty.png in Resources */,
-				A10000000000000000000011 /* bars.png in Resources */,
-				A10000000000000000000012 /* fill_green.png in Resources */,
-				A10000000000000000000013 /* fill_amber.png in Resources */,
-				A10000000000000000000014 /* fill_red.png in Resources */,
-				A10000000000000000000015 /* fill_empty.png in Resources */,
-				A10000000000000000000016 /* digits.png in Resources */,
-				A10000000000000000000017 /* task_bubble.png in Resources */,
+				A1000000000000000000001C /* Shared in Resources */,
+				A1000000000000000000001D /* Themes in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -213,6 +172,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000001 /* AgentPetApp.swift in Sources */,
+				A1000000000000000000001B /* PetTheme.swift in Sources */,
 				A10000000000000000000002 /* CodexClient.swift in Sources */,
 				A10000000000000000000003 /* SessionStore.swift in Sources */,
 				A10000000000000000000004 /* HookIntegration.swift in Sources */,

@@ -17,6 +17,8 @@ enum EnergyTier: String, CaseIterable, Hashable {
 
 struct SpriteManifest: Decodable {
     struct Size: Decodable { let width: Int; let height: Int }
+    struct Offset: Decodable { let x: Int; let y: Int }
+    struct Layout: Decodable { let bubbleOffset: Offset; let hudOffsetY: Int }
     struct Tier: Decodable {
         let range: [Int]
         let file: String
@@ -40,12 +42,22 @@ struct SpriteManifest: Decodable {
         let pixelFont: String
         let pixelFontGlyphs: String
     }
-    struct Logic: Decodable { let idleActivityAfterSeconds: Double; let idleActivityIntervalSeconds: [Double] }
+    struct IdleActivity: Decodable {
+        let name: String
+        let steps: [String]
+        let holdSecondsRange: [Double]?
+    }
+    struct Logic: Decodable {
+        let idleActivityAfterSeconds: Double
+        let idleActivityIntervalSeconds: [Double]
+        let idleActivities: [IdleActivity]
+    }
 
     let frameSize: Size
     let columns: Int
     let framesPerAnimation: Int
     let tiers: [String: Tier]
+    let layout: Layout
     let states: [String: Animation]
     let transitions: [String: Transition]
     let hud: HUD
@@ -73,9 +85,10 @@ struct SpriteClip {
 }
 
 @MainActor
-private final class SpriteAssets {
+final class SpriteAssets {
     static let shared = SpriteAssets()
-    let manifest: SpriteManifest?
+    private(set) var manifest: SpriteManifest?
+    private(set) var activeTheme: PetTheme?
     private var atlasTier: EnergyTier?
     private var atlas: CGImage?
     private var cachedKey: String?
@@ -86,14 +99,9 @@ private final class SpriteAssets {
     private var fills: [String: NSImage] = [:]
 
     private init() {
-        guard let url = Bundle.main.url(forResource: "manifest", withExtension: "json"),
-              let data = try? Data(contentsOf: url) else {
-            manifest = nil
-            return
-        }
-        manifest = try? JSONDecoder().decode(SpriteManifest.self, from: data)
+        _ = selectTheme(PetTheme.defaultTheme)
         for name in ["bars", "fill_green", "fill_amber", "fill_red", "fill_empty", "digits", "task_bubble"] {
-            if let url = Bundle.main.url(forResource: name, withExtension: "png"),
+            if let url = Bundle.main.url(forResource: name, withExtension: "png", subdirectory: "Shared"),
                let image = NSImage(contentsOf: url) {
                 hudImages[name] = image
             }
@@ -106,6 +114,37 @@ private final class SpriteAssets {
                 }
             }
         }
+    }
+
+    @discardableResult
+    func selectTheme(_ theme: PetTheme) -> Bool {
+        if activeTheme == theme, manifest != nil { return true }
+
+        guard let url = Bundle.main.url(
+            forResource: "manifest",
+            withExtension: "json",
+            subdirectory: theme.resourceDirectory
+        ),
+        let data = try? Data(contentsOf: url),
+        let loaded = try? JSONDecoder().decode(SpriteManifest.self, from: data),
+        EnergyTier.allCases.allSatisfy({ tier in
+            guard let file = loaded.tiers[tier.rawValue]?.file else { return false }
+            let path = file as NSString
+            return Bundle.main.url(
+                forResource: path.deletingPathExtension,
+                withExtension: path.pathExtension,
+                subdirectory: theme.resourceDirectory
+            ) != nil
+        }) else { return false }
+
+        manifest = loaded
+        activeTheme = theme
+        atlas = nil
+        atlasTier = nil
+        cachedKey = nil
+        cachedTier = nil
+        cachedFrames.removeAll()
+        return true
     }
 
     func clip(named key: String) -> SpriteClip? { manifest?.clip(named: key) }
@@ -127,9 +166,13 @@ private final class SpriteAssets {
         let selectedTier = tier ?? .focused
         guard clip.tiers.contains(selectedTier.rawValue) else { return nil }
         if atlasTier != selectedTier {
-            guard let tierManifest = manifest.tiers[selectedTier.rawValue],
-                  let filename = tierManifest.file.split(separator: "/").last.map(String.init),
-                  let url = Bundle.main.url(forResource: (filename as NSString).deletingPathExtension, withExtension: "png"),
+            guard let theme = activeTheme,
+                  let tierManifest = manifest.tiers[selectedTier.rawValue],
+                  let url = Bundle.main.url(
+                      forResource: (tierManifest.file as NSString).deletingPathExtension,
+                      withExtension: "png",
+                      subdirectory: theme.resourceDirectory
+                  ),
                   let source = NSImage(contentsOf: url),
                   let newAtlas = source.cgImage(forProposedRect: nil, context: nil, hints: nil),
                   newAtlas.width == tierManifest.width,
@@ -306,6 +349,19 @@ private final class PetAnimationCoordinator: ObservableObject {
         scheduleIdleActivity()
     }
 
+    func resetForTheme(_ next: PetVisualContext) {
+        cancelActivityTask()
+        sequence.removeAll()
+        sequenceIndex = 0
+        dragging = false
+        hovering = false
+        lastIdleActivity = nil
+        idleSince = Date()
+        context = next
+        show(next.isPaused ? "paused" : next.baseKey, tier: next.tier)
+        scheduleIdleActivity()
+    }
+
     func finishPlayback(_ id: UUID) {
         guard playback.id == id,
               let clip = assets.clip(named: playback.key),
@@ -441,8 +497,7 @@ private final class PetAnimationCoordinator: ObservableObject {
         sequence.removeAll()
         var target = initialState ?? visualState
         let finiteLoopStates: Set<String> = [
-            "booped", "giggling", "annoyed", "grabbed", "landing", "celebrating",
-            "stretching", "yawning", "coffee_break", "looking_around", "tiny_dance", "cap_adjust", "walking"
+            "booped", "giggling", "annoyed", "grabbed", "landing", "celebrating"
         ]
         for (index, step) in steps.enumerated() {
             guard let clip = assets.clip(named: step.key) else { continue }
@@ -520,28 +575,26 @@ private final class PetAnimationCoordinator: ObservableObject {
                         self.activityTaskRunning = false
                         return
                     }
-                    let activities: [(String, [String])] = [
-                        ("stretching", ["stretch", "stretching", "stretch_finish"]),
-                        ("yawning", ["yawn", "yawning"]),
-                        ("coffee_break", ["caffeinate", "coffee_break"]),
-                        ("looking_around", ["look", "looking_around"]),
-                        ("tiny_dance", ["dance", "tiny_dance"]),
-                        ("cap_adjust", ["adjust_cap", "cap_adjust"]),
-                        ("walking", ["walking"])
-                    ].filter { $0.0 != self.lastIdleActivity }
+                    let activities = (self.assets.manifest?.logic.idleActivities ?? [])
+                        .filter { $0.name != self.lastIdleActivity }
                     guard let activity = activities.randomElement() else { return }
-                    self.lastIdleActivity = activity.0
-                    let duration: Double
-                    if activity.0 == "walking" {
-                        let holdSeconds = Double.random(in: 1...2)
-                        self.playSequence([PlaybackStep("walking", holdSeconds: holdSeconds)], fallback: "idle")
-                        duration = holdSeconds
-                    } else {
-                        self.playSequence(activity.1.map { PlaybackStep($0) }, fallback: "idle")
-                        duration = activity.1
-                            .map { self.assets.duration(for: $0, tier: self.context?.tier) }
-                            .reduce(0, +)
+                    self.lastIdleActivity = activity.name
+                    let holdSeconds: Double? = activity.holdSecondsRange.flatMap { range -> Double? in
+                        guard range.count == 2 else { return nil }
+                        return Double.random(in: range[0]...range[1])
                     }
+                    let lastStep = activity.steps.count - 1
+                    let steps = activity.steps.enumerated().map { index, key in
+                        let hold = index == lastStep
+                            ? holdSeconds ?? (self.assets.clip(named: key)?.loop == true ? 0.9 : nil)
+                            : nil
+                        return PlaybackStep(key, holdSeconds: hold)
+                    }
+                    self.playSequence(steps, fallback: "idle")
+                    let duration = activity.steps.enumerated().map { index, key in
+                        if index == lastStep, let holdSeconds { return holdSeconds }
+                        return self.assets.duration(for: key, tier: self.context?.tier)
+                    }.reduce(0.0, +)
                     let interval = self.assets.manifest?.logic.idleActivityIntervalSeconds ?? [45, 125]
                     let wait = Double.random(in: interval[0]...interval[1])
                     try await Task.sleep(for: .seconds(duration + wait))
@@ -588,7 +641,9 @@ struct PetView: View {
 
     var body: some View {
         let runningCount = sessions.runningCount
-        let taskBubble = SpriteAssets.shared.manifest?.hud.taskBubble
+        let manifest = SpriteAssets.shared.manifest
+        let taskBubble = manifest?.hud.taskBubble
+        let layout = manifest?.layout
         let bubbleWidth = CGFloat(taskBubble?.size.first ?? 20)
         let bubbleHeight = CGFloat(taskBubble?.size.dropFirst().first ?? 19)
         VStack(spacing: 4 * pixelScale) {
@@ -605,7 +660,10 @@ struct PetView: View {
                             PixelDigits(text: "\(min(runningCount, 99))", scale: pixelScale)
                                 .offset(y: -1 * pixelScale)
                         }
-                        .offset(x: -12 * pixelScale, y: 8 * pixelScale)
+                        .offset(
+                            x: CGFloat(layout?.bubbleOffset.x ?? -12) * pixelScale,
+                            y: CGFloat(layout?.bubbleOffset.y ?? 8) * pixelScale
+                        )
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel("\(runningCount) Codex tasks running")
                         .transition(.scale.combined(with: .opacity))
@@ -616,7 +674,7 @@ struct PetView: View {
             if model.showUsageHUD {
                 PixelHUDView(snapshot: codex.usage, scale: pixelScale)
                     .frame(width: 36 * pixelScale, height: 14 * pixelScale)
-                    .offset(y: -6 * pixelScale)
+                    .offset(y: CGFloat(layout?.hudOffsetY ?? -6) * pixelScale)
             }
         }
         .padding(.top, 8 * pixelScale)
@@ -643,6 +701,7 @@ struct PetView: View {
         .preferredColorScheme(model.appearance.colorScheme)
         .onAppear { animator.update(visualContext) }
         .onChange(of: visualContext) { _, context in animator.update(context) }
+        .onChange(of: model.selectedTheme) { _, _ in animator.resetForTheme(visualContext) }
         .task(id: animator.playback.id) {
             let playback = animator.playback
             guard let clip = SpriteAssets.shared.clip(named: playback.key) else { return }

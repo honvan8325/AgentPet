@@ -49,8 +49,17 @@ final class AgentPetModel: ObservableObject {
         } else {
             updaterController = nil
         }
+
+        let savedThemeID = UserDefaults.standard.string(forKey: "selectedTheme")
+        let savedTheme = PetTheme.available.first { $0.id == savedThemeID } ?? PetTheme.defaultTheme
+        if SpriteAssets.shared.selectTheme(savedTheme) {
+            selectedTheme = savedTheme
+        } else {
+            selectedTheme = SpriteAssets.shared.activeTheme ?? PetTheme.defaultTheme
+        }
     }
 
+    @Published private(set) var selectedTheme: PetTheme
     @Published var petSize: PetSize = AgentPetModel.preference("petSize", default: .medium) {
         didSet {
             UserDefaults.standard.set(petSize.rawValue, forKey: "petSize")
@@ -140,6 +149,17 @@ final class AgentPetModel: ObservableObject {
     func openDashboard() { onOpenDashboard?() }
     func openSettings() { onOpenSettings?() }
     func hidePet() { onHidePet?() }
+
+    func selectTheme(_ theme: PetTheme) {
+        guard theme != selectedTheme else { return }
+        guard SpriteAssets.shared.selectTheme(theme) else {
+            settingsError = "Unable to load the selected mascot."
+            return
+        }
+        selectedTheme = theme
+        UserDefaults.standard.set(theme.id, forKey: "selectedTheme")
+        settingsError = nil
+    }
 
     func openThread(_ id: String?) {
         guard let id, !id.isEmpty,

@@ -1,6 +1,6 @@
 # AgentPet
 
-AgentPet is a native macOS menu bar companion for Codex. A yellow pixel chick wearing an eggshell cap works at a tiny blue laptop, reacts to observed Codex lifecycle events, and displays real usage information.
+AgentPet is a native macOS menu bar companion for Codex. Its pixel mascots react to observed Codex lifecycle events and display real usage information.
 
 Built with SwiftUI and AppKit. The app includes five energy atlases, 30 animation states, 38 transitions, a transparent floating pet window, and a compact two-bar usage HUD.
 
@@ -60,7 +60,7 @@ The menu bar provides:
 - Check for Updates.
 - Quit AgentPet.
 
-Drag the chick to move it; its position is saved. Right-click the pet for its context menu. Clicking the pet plays an animation and does not open the dashboard.
+Drag the pet to move it; its position is saved. Right-click the pet for its context menu. Clicking the pet plays an animation and does not open the dashboard.
 
 The dashboard shows Codex connection status, 5H/7D usage, observed Running sessions, permission request events, recent threads, task status, source, and update time. A row opens its Codex thread only when AgentPet has a validated thread ID. Historical threads are shown with Unknown runtime state.
 
@@ -76,6 +76,10 @@ Settings includes:
 - Codex integration status and enable/disable/repair/retry actions.
 
 Pausing AgentPet affects its animation only; it does not pause Codex tasks.
+
+## Mascot Themes
+
+Mascot themes are discovered from folders in `AgentPet/Resources/Themes/`. Each folder provides a `manifest.json` and its energy atlases; adding a theme folder makes it available in Settings without changing Swift code. Chick remains the default mascot. Changing mascots changes appearance and animations without changing the Codex integration.
 
 ## Codex integration and privacy
 
@@ -114,6 +118,8 @@ xcodebuild \
 ```
 
 The project has two targets: the macOS app and the native `AgentPetHook` helper. Sparkle is resolved through Swift Package Manager.
+
+Theme resources are organized as `AgentPet/PetTheme.swift`, `AgentPet/Resources/Shared/`, and one folder per mascot under `AgentPet/Resources/Themes/`.
 
 ## GitHub releases
 
