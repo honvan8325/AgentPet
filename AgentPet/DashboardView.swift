@@ -14,7 +14,7 @@ struct DashboardView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("AgentPet")
@@ -38,7 +38,7 @@ struct DashboardView: View {
             HStack(spacing: 16) {
                 Label("\(sessions.runningCount) Running", systemImage: "circle.fill")
                     .foregroundStyle(.green)
-                Label("\(sessions.needsInputCount) Approval Requested", systemImage: "exclamationmark.circle.fill")
+                Label("\(sessions.needsInputCount) Permission Requests Observed", systemImage: "exclamationmark.circle.fill")
                     .foregroundStyle(.orange)
             }
             .font(.caption.weight(.medium))
@@ -68,7 +68,7 @@ struct DashboardView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 8) {
+                    LazyVStack(spacing: 10) {
                         ForEach(sessions.dashboardTasks) { task in
                             Button { model.openThread(task.threadID) } label: {
                                 TaskRow(task: task)
@@ -80,32 +80,59 @@ struct DashboardView: View {
                 }
             }
 
-            if hooks.state != .receivingEvents {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "waveform.path")
-                        .foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(hooks.state == .error ? "Live tracking needs attention" : "Live tracking is not confirmed")
-                            .font(.subheadline.weight(.semibold))
-                        Text(hooks.state == .configured
-                             ? "Configured, but no lifecycle event has been observed in this run."
-                             : hooks.errorMessage ?? hooks.state.title)
+            if hooks.state == .configured {
+                Label("Codex integration is configured and waiting for its first lifecycle event.", systemImage: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 4)
+            } else if hooks.state == .error {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(hooks.needsRepair ? "Codex integration needs repair" : "Live tracking needs attention")
+                                .font(.subheadline.weight(.semibold))
+                            Text(model.settingsError ?? hooks.errorMessage ?? hooks.state.title)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    HStack {
+                        Spacer()
+                        Button(model.integrationActionTitle) {
+                            model.toggleIntegration()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
+                }
+                .padding(14)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+            } else if hooks.state == .disabled {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "waveform.path")
+                            .foregroundStyle(.secondary)
+                        Text("Codex lifecycle tracking is disabled.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    Spacer(minLength: 0)
-                    Button(model.integrationActionTitle) {
-                        model.toggleIntegration()
+                    HStack {
+                        Spacer()
+                        Button("Enable Codex Integration") {
+                            model.toggleIntegration()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
                 }
-                .padding(12)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
             }
         }
         .padding(18)
-        .frame(width: 390, height: 500)
+        .frame(width: 440, height: 620)
         .background(.regularMaterial)
         .preferredColorScheme(model.appearance.colorScheme)
     }
@@ -152,7 +179,7 @@ struct SettingsView: View {
                     set: { model.setAutomaticUpdateChecks($0) }
                 ))
                 .disabled(model.updaterController == nil)
-                Toggle("Automatically download and install updates", isOn: Binding(
+                Toggle("Automatically download updates", isOn: Binding(
                     get: { model.updaterController?.updater.automaticallyDownloadsUpdates ?? false },
                     set: { model.setAutomaticDownloads($0) }
                 ))
@@ -251,15 +278,24 @@ private struct TaskRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(task.title)
                     .font(.system(size: 13, weight: .semibold))
-                    .lineLimit(1)
-                HStack(spacing: 6) {
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
                     Text(task.status.title)
-                    Text("· \(runtimeDescription)")
-                    if let source = task.source { Text("· \(source)") }
-                    if let date = task.updatedAt { Text("· \(date.formatted(.relative(presentation: .named)))") }
+                        .fontWeight(.semibold)
+                        .foregroundStyle(color)
+                    if task.isLive {
+                        Label("Live", systemImage: "waveform")
+                    } else if task.isHistorical {
+                        Label("History", systemImage: "clock")
+                    }
+                    if let source = task.source { Text(source) }
+                    if let date = task.updatedAt { Text(date.formatted(.relative(presentation: .named))) }
                 }
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
                 .help(task.status == .needsInput
                       ? "A permission request was observed. Whether approval is still pending is not confirmed."
                       : task.status.title)
@@ -267,7 +303,8 @@ private struct TaskRow: View {
             Spacer(minLength: 0)
             if task.threadID != nil { Image(systemName: "arrow.up.right").font(.caption2).foregroundStyle(.tertiary) }
         }
-        .padding(10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.quaternary.opacity(0.7), in: RoundedRectangle(cornerRadius: 10))
         .contentShape(RoundedRectangle(cornerRadius: 10))
@@ -279,17 +316,8 @@ private struct TaskRow: View {
         case .needsInput: .orange
         case .ready: .blue
         case .interrupted: .purple
-        case .failed: .red
         case .unknown: .gray
         }
     }
 
-    private var runtimeDescription: String {
-        switch task.status {
-        case .running: "Live session"
-        case .needsInput: "Permission request observed"
-        case .ready, .interrupted, .failed: "Observed turn"
-        case .unknown: task.isHistorical ? "Historical thread" : "Runtime state unavailable"
-        }
-    }
 }

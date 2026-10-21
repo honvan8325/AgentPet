@@ -23,9 +23,14 @@ final class HookIntegration: ObservableObject {
     @Published private(set) var state: HookIntegrationState = .disabled
     @Published private(set) var errorMessage: String?
     @Published private(set) var configuredHandlerCount = 0
+    @Published private(set) var nativeHandlerCount = 0
+    @Published private(set) var needsMigration = false
 
     var hasConfiguredHandlers: Bool { configuredHandlerCount > 0 }
     var isPartiallyConfigured: Bool { configuredHandlerCount > 0 && configuredHandlerCount < eventNames.count }
+    var hasCompleteNativeHandlers: Bool { nativeHandlerCount == eventNames.count }
+    var needsRepair: Bool { isPartiallyConfigured || needsMigration || (state == .error && !hasCompleteNativeHandlers) }
+    var canRetryTracking: Bool { state == .error && hasCompleteNativeHandlers && !needsMigration }
 
     private let fileManager = FileManager.default
     private let eventNames = ["UserPromptSubmit", "Stop", "PermissionRequest", "Interrupt"]
@@ -68,15 +73,22 @@ final class HookIntegration: ObservableObject {
         self.onTrackingUnavailable = onTrackingUnavailable
         do {
             try installBundledCollector()
-            let coverage = try agentPetHandlerCoverage()
-            configuredHandlerCount = coverage.values.filter { $0 }.count
-            if coverage.values.allSatisfy({ $0 }) {
+            let coverage = try handlerCoverage()
+            configuredHandlerCount = coverage.configuredCount
+            nativeHandlerCount = coverage.nativeCount
+            needsMigration = coverage.needsMigration
+            if hasCompleteNativeHandlers && !needsMigration {
+                errorMessage = nil
                 state = .configured
                 startReadingAtEnd()
-            } else if coverage.values.contains(true) {
-                setError(IntegrationError.invalid("Only some AgentPet lifecycle handlers are configured. Enable integration to restore the complete set."))
+            } else if hasConfiguredHandlers {
+                let message = needsMigration
+                    ? "Legacy AgentPet hook commands need migration to the native collector."
+                    : "Only some AgentPet lifecycle handlers are configured. Repair integration to restore the complete set."
+                setError(IntegrationError.invalid(message))
             } else {
                 state = .disabled
+                errorMessage = nil
                 onTrackingUnavailable()
             }
         } catch {
@@ -109,6 +121,8 @@ final class HookIntegration: ObservableObject {
 
         errorMessage = nil
         configuredHandlerCount = eventNames.count
+        nativeHandlerCount = eventNames.count
+        needsMigration = false
         state = .configured
         startReadingAtEnd()
     }
@@ -119,6 +133,8 @@ final class HookIntegration: ObservableObject {
         let changed = try removeAgentPetHandlers(from: &hooks)
         guard changed else {
             configuredHandlerCount = 0
+            nativeHandlerCount = 0
+            needsMigration = false
             state = .disabled
             errorMessage = nil
             stopReading()
@@ -128,6 +144,8 @@ final class HookIntegration: ObservableObject {
         else { root["hooks"] = hooks }
         try writeHooksConfig(root)
         configuredHandlerCount = 0
+        nativeHandlerCount = 0
+        needsMigration = false
         state = .disabled
         errorMessage = nil
         stopReading()
@@ -137,6 +155,13 @@ final class HookIntegration: ObservableObject {
         stopReading()
         onEvent = nil
         onTrackingUnavailable = nil
+    }
+
+    func retryTracking() {
+        guard hasCompleteNativeHandlers, !needsMigration else { return }
+        errorMessage = nil
+        state = .configured
+        startReadingAtEnd()
     }
 
     private func startReadingAtEnd() {
@@ -152,15 +177,34 @@ final class HookIntegration: ObservableObject {
             setError(error)
             return
         }
+        var continuityLost = fileManager.fileExists(atPath: eventsGapURL.path)
         var sequenceBytes = [UInt8](repeating: 0, count: 32)
         let sequenceLength = sequenceBytes.withUnsafeMutableBytes { rawBuffer in
             Darwin.pread(lockDescriptor, rawBuffer.baseAddress, rawBuffer.count, 0)
         }
-        if sequenceLength > 0,
-           let text = String(bytes: sequenceBytes.prefix(sequenceLength), encoding: .ascii) {
-            lastSequence = UInt64(text)
+        if sequenceLength < 0 {
+            let error = POSIXError(.init(rawValue: errno) ?? .EIO)
+            flock(lockDescriptor, LOCK_UN)
+            close(lockDescriptor)
+            setError(error)
+            return
+        }
+        if sequenceLength > 0 {
+            if let text = String(bytes: sequenceBytes.prefix(sequenceLength), encoding: .ascii),
+               let sequence = UInt64(text) {
+                lastSequence = sequence
+            } else {
+                continuityLost = true
+            }
         }
         let descriptor = open(eventsURL.path, O_RDONLY)
+        if descriptor < 0 && errno != ENOENT {
+            let error = POSIXError(.init(rawValue: errno) ?? .EIO)
+            flock(lockDescriptor, LOCK_UN)
+            close(lockDescriptor)
+            setError(error)
+            return
+        }
         if descriptor >= 0 {
             guard flock(descriptor, LOCK_EX) == 0 else {
                 let error = POSIXError(.init(rawValue: errno) ?? .EIO)
@@ -181,14 +225,16 @@ final class HookIntegration: ObservableObject {
                 return
             }
             offset = UInt64(max(0, metadata.st_size))
+            if offset > 0 && lastSequence == nil { continuityLost = true }
             fileIdentity = UInt64(metadata.st_ino)
             flock(descriptor, LOCK_UN)
             close(descriptor)
         }
-        unlink(eventsGapURL.path)
+        if continuityLost { unlink(eventsGapURL.path) }
         flock(lockDescriptor, LOCK_UN)
         close(lockDescriptor)
         partialLine.removeAll(keepingCapacity: true)
+        if continuityLost { onTrackingUnavailable?() }
         timer = Timer.scheduledTimer(withTimeInterval: 0.75, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.readNewEvents() }
         }
@@ -290,10 +336,18 @@ final class HookIntegration: ObservableObject {
                     continuityLost = true
                     continue
                 }
-                if let sequence = event.sequence {
-                    if let sequenceCursor, sequence != sequenceCursor &+ 1 { continuityLost = true }
-                    sequenceCursor = sequence
+                guard let sequence = event.sequence else {
+                    continuityLost = true
+                    sequenceCursor = nil
+                    continue
                 }
+                if let previousSequence = sequenceCursor,
+                   sequence != previousSequence &+ 1 {
+                    continuityLost = true
+                    sequenceCursor = sequence
+                    continue
+                }
+                sequenceCursor = sequence
                 guard let sessionID = event.sessionID, !sessionID.isEmpty,
                       let turnID = event.turnID, !turnID.isEmpty else {
                     continuityLost = true
@@ -312,20 +366,31 @@ final class HookIntegration: ObservableObject {
         }
     }
 
-    private func agentPetHandlerCoverage() throws -> [String: Bool] {
+    private func handlerCoverage() throws -> (nativeCount: Int, configuredCount: Int, needsMigration: Bool) {
         let root = try readHooksConfig()
         let hooks = try hooksDictionary(from: root)
-        return try Dictionary(uniqueKeysWithValues: eventNames.map { event in
-            let found = try hookGroups(for: event, in: hooks).contains { group in
-                let handlers = group["hooks"] as? [[String: Any]] ?? []
-                return handlers.contains { handler in
-                    guard let command = handler["command"] as? String else { return false }
-                    return command == Self.hookCommand(collector: collectorURL.path)
-                        || command == Self.legacyHookCommand(collector: legacyCollectorURL.path)
+        var nativeCount = 0
+        var configuredCount = 0
+        var needsMigration = false
+        for event in eventNames {
+            var hasNative = false
+            var hasAgentPetHandler = false
+            for group in try hookGroups(for: event, in: hooks) {
+                for handler in group["hooks"] as? [[String: Any]] ?? [] {
+                    guard let command = handler["command"] as? String else { continue }
+                    if command == Self.hookCommand(collector: collectorURL.path) {
+                        hasNative = true
+                        hasAgentPetHandler = true
+                    } else if command == Self.legacyHookCommand(collector: legacyCollectorURL.path) {
+                        needsMigration = true
+                        hasAgentPetHandler = true
+                    }
                 }
             }
-            return (event, found)
-        })
+            if hasNative { nativeCount += 1 }
+            if hasAgentPetHandler { configuredCount += 1 }
+        }
+        return (nativeCount, configuredCount, needsMigration)
     }
 
     private func readHooksConfig() throws -> [String: Any] {

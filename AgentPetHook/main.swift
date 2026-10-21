@@ -32,6 +32,8 @@ guard let payload = try? JSONSerialization.jsonObject(with: input) as? [String: 
       allowedEvents.contains(name) else {
     exit(EXIT_SUCCESS)
 }
+let sessionID = payload["session_id"] as? String
+let turnID = payload["turn_id"] as? String
 
 let base = FileManager.default.urls(
     for: .applicationSupportDirectory,
@@ -55,6 +57,18 @@ do {
     guard flock(lockDescriptor, LOCK_EX) == 0 else { exit(EXIT_SUCCESS) }
     defer { flock(lockDescriptor, LOCK_UN) }
 
+    var continuityLost = FileManager.default.fileExists(atPath: gapURL.path)
+    let gapDescriptor = Darwin.open(gapURL.path, O_CREAT | O_WRONLY | O_TRUNC, mode_t(0o600))
+    guard gapDescriptor >= 0 else { exit(EXIT_SUCCESS) }
+    defer { close(gapDescriptor) }
+    guard fchmod(gapDescriptor, mode_t(0o600)) == 0,
+          writeAll(Data("1".utf8), to: gapDescriptor),
+          fsync(gapDescriptor) == 0 else { exit(EXIT_SUCCESS) }
+
+    guard let sessionID, !sessionID.isEmpty, let turnID, !turnID.isEmpty else {
+        exit(EXIT_SUCCESS)
+    }
+
     var sequenceBuffer = [UInt8](repeating: 0, count: 32)
     let sequenceLength = sequenceBuffer.withUnsafeMutableBytes { buffer in
         Darwin.pread(lockDescriptor, buffer.baseAddress, buffer.count, 0)
@@ -72,30 +86,32 @@ do {
 
     let event: [String: Any] = [
         "event": name,
-        "session_id": payload["session_id"] as? String ?? "",
-        "turn_id": payload["turn_id"] as? String ?? "",
+        "session_id": sessionID,
+        "turn_id": turnID,
         "sequence": sequence,
         "timestamp": Date().timeIntervalSince1970
     ]
     var line = try JSONSerialization.data(withJSONObject: event)
     line.append(0x0A)
+    guard line.count <= 1_000_000 else { exit(EXIT_SUCCESS) }
 
     let logDescriptor = Darwin.open(logURL.path, O_CREAT | O_WRONLY | O_APPEND, mode_t(0o600))
     guard logDescriptor >= 0 else { exit(EXIT_SUCCESS) }
     defer { close(logDescriptor) }
     guard fchmod(logDescriptor, mode_t(0o600)) == 0 else { exit(EXIT_SUCCESS) }
+    guard flock(logDescriptor, LOCK_EX) == 0 else { exit(EXIT_SUCCESS) }
+    defer { flock(logDescriptor, LOCK_UN) }
 
     var logMetadata = stat()
     guard fstat(logDescriptor, &logMetadata) == 0 else { exit(EXIT_SUCCESS) }
     if logMetadata.st_size + off_t(line.count) > 1_000_000 {
+        continuityLost = true
         guard ftruncate(logDescriptor, 0) == 0 else { exit(EXIT_SUCCESS) }
-        let gapDescriptor = Darwin.open(gapURL.path, O_CREAT | O_WRONLY | O_TRUNC, mode_t(0o600))
-        guard gapDescriptor >= 0 else { exit(EXIT_SUCCESS) }
-        defer { close(gapDescriptor) }
-        guard fchmod(gapDescriptor, mode_t(0o600)) == 0,
-              writeAll(Data("1".utf8), to: gapDescriptor) else { exit(EXIT_SUCCESS) }
     }
-    _ = writeAll(line, to: logDescriptor)
+    guard writeAll(line, to: logDescriptor),
+          fsync(logDescriptor) == 0,
+          fsync(lockDescriptor) == 0 else { exit(EXIT_SUCCESS) }
+    if !continuityLost { unlink(gapURL.path) }
 } catch {
     exit(EXIT_SUCCESS)
 }

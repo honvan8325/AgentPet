@@ -82,14 +82,14 @@ final class AgentPetModel: ObservableObject {
 
     private var connectionTask: Task<Void, Never>?
     private var hasConnected = false
+    private var isRefreshing = false
 
     var petState: PetState {
         sessions.petState(
             isConnected: codex.connectionState == .connected,
             isConnecting: codex.connectionState == .connecting,
             isReconnecting: codex.connectionState == .reconnecting,
-            isPaused: isPetPaused,
-            fiveHourRemaining: codex.usage?.fiveHour?.remaining
+            isPaused: isPetPaused
         )
     }
 
@@ -111,7 +111,8 @@ final class AgentPetModel: ObservableObject {
     }
 
     var integrationActionTitle: String {
-        if hooks.isPartiallyConfigured { return "Repair Codex Integration" }
+        if hooks.needsRepair { return "Repair Codex Integration" }
+        if hooks.canRetryTracking { return "Retry Live Tracking" }
         return hooks.hasConfiguredHandlers ? "Disable Codex Integration" : "Enable Codex Integration"
     }
 
@@ -125,10 +126,14 @@ final class AgentPetModel: ObservableObject {
     }
 
     func refreshNow() async {
-        guard codex.connectionState == .connected else { return }
+        guard codex.connectionState == .connected, !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+
         async let usage: Void = codex.refreshUsage()
         async let threads: Void = codex.refreshThreads(preserving: sessions.mappedLiveThreadIDs)
         _ = await (usage, threads)
+        guard codex.connectionState == .connected else { return }
         sessions.updateThreads(codex.threads)
     }
 
@@ -145,8 +150,10 @@ final class AgentPetModel: ObservableObject {
 
     func toggleIntegration() {
         do {
-            if hooks.isPartiallyConfigured {
+            if hooks.needsRepair {
                 try hooks.enable()
+            } else if hooks.canRetryTracking {
+                hooks.retryTracking()
             } else if hooks.hasConfiguredHandlers {
                 try hooks.disable()
                 sessions.invalidateRuntime()

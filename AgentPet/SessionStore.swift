@@ -1,23 +1,19 @@
 import Combine
 import Foundation
 
-enum TaskStatus: String, CaseIterable, Identifiable, Hashable {
+enum TaskStatus: String, Hashable {
     case running
     case needsInput = "needs_input"
     case ready
     case interrupted
-    case failed
     case unknown
-
-    var id: String { rawValue }
 
     var title: String {
         switch self {
         case .running: "Running"
-        case .needsInput: "Approval requested"
+        case .needsInput: "Permission request observed"
         case .ready: "Ready · turn finished"
         case .interrupted: "Interrupted"
-        case .failed: "Failed"
         case .unknown: "Unknown runtime state"
         }
     }
@@ -32,8 +28,6 @@ enum PetState: String, Equatable {
     case syncing
     case reconnecting
     case paused
-    case lowQuota = "low_quota"
-    case criticalQuota = "critical_quota"
 
     var animationKey: String { rawValue }
 }
@@ -60,23 +54,19 @@ struct AppliedSessionChange: Equatable {
     let transition: String?
 }
 
-struct SessionState: Identifiable, Hashable {
+struct SessionState: Hashable {
     let sessionID: String
     var threadID: String?
     var title: String?
     var turnID: String
     var status: TaskStatus
     var updatedAt: Date
-
-    var id: String { sessionID }
 }
 
 struct CodexThread: Identifiable, Hashable {
     let id: String
     var title: String
     var source: String?
-    var originator: String?
-    var apiStatus: String?
     var createdAt: Date?
     var updatedAt: Date?
 }
@@ -121,9 +111,11 @@ final class SessionStore: ObservableObject {
 
     func updateThreads(_ threads: [CodexThread]) {
         self.threads = threads
+        let byID = Dictionary(uniqueKeysWithValues: threads.map { ($0.id, $0) })
         for (sessionID, var session) in sessions {
-            guard let threadID = session.threadID,
-                  let thread = threads.first(where: { $0.id == threadID }) else { continue }
+            let verifiedID = session.threadID ?? sessionID
+            guard let thread = byID[verifiedID] else { continue }
+            session.threadID = thread.id
             session.title = thread.title
             sessions[sessionID] = session
         }
@@ -137,7 +129,8 @@ final class SessionStore: ObservableObject {
     }
 
     func mapThread(sessionID: String, to thread: CodexThread) {
-        guard var session = sessions[sessionID] else { return }
+        guard var session = sessions[sessionID],
+              thread.id == (session.threadID ?? sessionID) else { return }
         session.threadID = thread.id
         session.title = thread.title
         sessions[sessionID] = session
@@ -176,14 +169,7 @@ final class SessionStore: ObservableObject {
             guard !terminalTurns.contains(key),
                   !permissionTurns.contains(key),
                   !ambiguousStarts.contains(key) else { return false }
-            if let current, current.turnID == turnID {
-                guard current.status == .unknown else { return false }
-                var resumed = current
-                resumed.status = .running
-                resumed.updatedAt = date
-                sessions[sessionID] = resumed
-                return publish(event, transition: nil)
-            }
+            if let current, current.turnID == turnID { return false }
             if let current, ambiguousSessions.contains(sessionID) {
                 remember(key, in: &ambiguousStarts, order: &ambiguousStartOrder)
                 if current.status != .unknown {
@@ -250,7 +236,7 @@ final class SessionStore: ObservableObject {
                 return false
             }
             let oldStatus = current?.status
-            guard oldStatus != .ready && oldStatus != .interrupted && oldStatus != .failed else { return false }
+            guard oldStatus != .ready && oldStatus != .interrupted else { return false }
             let next: TaskStatus = event.event == "Stop" ? .ready : .interrupted
             if event.event == "Stop", oldStatus == .running { transition = "finish" }
             if event.event == "Interrupt", oldStatus == .running { transition = "interrupt" }
@@ -314,8 +300,7 @@ final class SessionStore: ObservableObject {
         isConnected: Bool,
         isConnecting: Bool,
         isReconnecting: Bool,
-        isPaused: Bool,
-        fiveHourRemaining: Double?
+        isPaused: Bool
     ) -> PetState {
         if isPaused { return .paused }
         if needsInputCount > 0 { return .needsInput }
@@ -323,11 +308,6 @@ final class SessionStore: ObservableObject {
         if isReconnecting { return .reconnecting }
         if isConnecting { return .syncing }
         if !isConnected { return .disconnected }
-        if let remaining = fiveHourRemaining, remaining.isFinite {
-            let value = min(100, max(0, remaining))
-            if value <= 18 { return .criticalQuota }
-            if value <= 40 { return .lowQuota }
-        }
         return .idle
     }
 
@@ -341,7 +321,7 @@ final class SessionStore: ObservableObject {
                 updatedAt: session.updatedAt,
                 threadID: session.threadID,
                 source: thread?.source,
-                isLive: session.status == .running || session.status == .needsInput,
+                isLive: session.status == .running,
                 isHistorical: false
             )
         }
@@ -372,7 +352,7 @@ final class SessionStore: ObservableObject {
     private func dashboardPriority(_ task: DashboardTask) -> Int {
         if task.status == .needsInput { return 0 }
         if task.status == .running { return 1 }
-        if !task.isHistorical && (task.status == .ready || task.status == .interrupted || task.status == .failed) { return 2 }
+        if !task.isHistorical && (task.status == .ready || task.status == .interrupted) { return 2 }
         if task.isHistorical { return 3 }
         return 4
     }

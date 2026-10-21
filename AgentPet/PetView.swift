@@ -207,7 +207,6 @@ private struct PlaybackStep: ExpressibleByStringLiteral {
 private struct PetVisualContext: Equatable {
     let baseKey: String
     let tier: EnergyTier?
-    let isTracking: Bool
     let runningCount: Int
     let needsInputCount: Int
     let isPaused: Bool
@@ -235,7 +234,7 @@ private final class PetAnimationCoordinator: ObservableObject {
         let previous = context
         context = next
         let eventChanged = previous?.change?.revision != next.change?.revision && next.change != nil
-        if previous?.baseKey != next.baseKey || previous?.isTracking != next.isTracking {
+        if previous?.baseKey != next.baseKey {
             idleSince = Date()
         }
 
@@ -301,10 +300,6 @@ private final class PetAnimationCoordinator: ObservableObject {
             playSequence(["disconnect"], fallback: next.baseKey, startingAt: previous.baseKey)
         } else if previous.baseKey == "idle", next.baseKey == "syncing" {
             playSequence(["begin_sync"], fallback: next.baseKey, startingAt: previous.baseKey)
-        } else if previous.baseKey == "idle", next.baseKey == "low_quota" {
-            playSequence(["quota_low"], fallback: next.baseKey, startingAt: previous.baseKey)
-        } else if previous.baseKey == "low_quota", next.baseKey == "critical_quota" {
-            playSequence(["quota_critical"], fallback: next.baseKey, startingAt: previous.baseKey)
         } else {
             show(next.baseKey, tier: next.tier)
         }
@@ -480,7 +475,6 @@ private final class PetAnimationCoordinator: ObservableObject {
     private func scheduleIdleActivity() {
         cancelActivityTask()
         guard let context,
-              context.isTracking,
               !context.isPaused,
               sequence.isEmpty,
               !hovering,
@@ -515,7 +509,12 @@ private final class PetAnimationCoordinator: ObservableObject {
                 try await Task.sleep(for: .seconds(initialDelay))
                 while !Task.isCancelled {
                     guard let self, self.context?.baseKey == "idle",
-                          self.context?.isTracking == true else { return }
+                          self.context?.runningCount == 0,
+                          self.context?.needsInputCount == 0,
+                          !self.isPaused,
+                          !self.hovering,
+                          !self.dragging,
+                          self.sequence.isEmpty else { return }
                     if Date().timeIntervalSince(self.idleSince) >= 300 {
                         self.playSequence(["sleep", "sleeping"], fallback: "idle")
                         self.activityTaskRunning = false
@@ -562,14 +561,12 @@ struct PetView: View {
     @ObservedObject var model: AgentPetModel
     @ObservedObject private var sessions: SessionStore
     @ObservedObject private var codex: CodexClient
-    @ObservedObject private var hooks: HookIntegration
     @StateObject private var animator = PetAnimationCoordinator()
 
     init(model: AgentPetModel) {
         self.model = model
         _sessions = ObservedObject(wrappedValue: model.sessions)
         _codex = ObservedObject(wrappedValue: model.codex)
-        _hooks = ObservedObject(wrappedValue: model.hooks)
     }
 
     private var energyTier: EnergyTier? {
@@ -580,7 +577,6 @@ struct PetView: View {
         PetVisualContext(
             baseKey: model.petState.animationKey,
             tier: energyTier,
-            isTracking: hooks.state == .receivingEvents,
             runningCount: sessions.runningCount,
             needsInputCount: sessions.needsInputCount,
             isPaused: model.isPetPaused,

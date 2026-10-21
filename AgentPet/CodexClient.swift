@@ -61,7 +61,6 @@ enum RPCTransportError: LocalizedError {
 }
 
 actor CodexRPC {
-    private let executable = URL(fileURLWithPath: "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex")
     private var process: Process?
     private var input: Pipe?
     private var output: Pipe?
@@ -86,6 +85,19 @@ actor CodexRPC {
     func start() async throws {
         if process?.isRunning == true && !transportFailed { return }
         if process != nil { await stop() }
+
+        let appURL = await MainActor.run {
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex")
+        }
+        let appBundleURL = appURL ?? URL(fileURLWithPath: "/Applications/ChatGPT.app", isDirectory: true)
+        let executable = appBundleURL.appendingPathComponent(
+            "Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
+        )
+        guard FileManager.default.isExecutableFile(atPath: executable.path) else {
+            throw RPCTransportError.unavailable(
+                "ChatGPT Desktop is not installed or does not contain an accessible Codex CLI."
+            )
+        }
 
         generation &+= 1
         let currentGeneration = generation
@@ -136,11 +148,12 @@ actor CodexRPC {
             await self?.processDidExit(generation: currentGeneration)
         }
 
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
         let params: JSONValue = .object([
             "clientInfo": .object([
                 "name": .string("agentpet"),
                 "title": .string("AgentPet"),
-                "version": .string("1.0.0")
+                "version": .string(version)
             ])
         ])
         let response = try await request("initialize", params: params, timeout: 20)
@@ -234,10 +247,16 @@ actor CodexRPC {
                 return
             }
 
-            if let number = message["id"] as? NSNumber {
-                let id = number.intValue
+            if message["id"] != nil {
+                guard let number = message["id"] as? NSNumber,
+                      CFGetTypeID(number) != CFBooleanGetTypeID(),
+                      number.doubleValue.isFinite,
+                      number.doubleValue.rounded(.towardZero) == number.doubleValue,
+                      let id = Int(exactly: number.int64Value),
+                      NSNumber(value: number.int64Value).compare(number) == .orderedSame,
+                      let continuation = pending.removeValue(forKey: id) else { continue }
                 timeouts.removeValue(forKey: id)?.cancel()
-                pending.removeValue(forKey: id)?.resume(returning: line)
+                continuation.resume(returning: line)
             } else if message["method"] != nil {
                 notificationHandler?(line)
             }
@@ -342,83 +361,114 @@ final class CodexClient: ObservableObject {
     }
 
     private let rpc = CodexRPC()
-    private var nextCursor: String?
     private var metadataLookups: [String: MetadataLookup] = [:]
     private var metadataMisses: [String: Date] = [:]
     private var metadataRetryAfter: [String: Date] = [:]
     private var preservedThreadIDs = Set<String>()
     private var consecutiveTimeouts = 0
+    private var connectionGeneration: UInt64 = 0
     private let pageSize = 50
-    var hasMoreThreads: Bool { nextCursor != nil }
 
     func connect(reconnecting: Bool) async throws {
+        connectionGeneration &+= 1
+        let generation = connectionGeneration
         connectionState = reconnecting ? .reconnecting : .connecting
+        usage = nil
         for lookup in metadataLookups.values { lookup.task.cancel() }
         metadataLookups.removeAll(keepingCapacity: true)
         metadataMisses.removeAll(keepingCapacity: true)
         metadataRetryAfter.removeAll(keepingCapacity: true)
         await rpc.setHandlers(
             notification: { [weak self] data in
-                Task { @MainActor in self?.receiveNotification(data) }
+                Task { @MainActor in self?.receiveNotification(data, generation: generation) }
             },
             disconnect: { [weak self] in
-                Task { @MainActor in self?.markReconnecting(RPCTransportError.closed) }
+                Task { @MainActor in self?.markReconnecting(RPCTransportError.closed, generation: generation) }
             }
         )
         do {
             try await rpc.start()
+            guard generation == connectionGeneration else { throw RPCTransportError.closed }
             connectionState = .connected
             consecutiveTimeouts = 0
             errorMessage = nil
         } catch {
-            connectionState = .disconnected
-            errorMessage = error.localizedDescription
-            await rpc.stop()
+            if generation == connectionGeneration {
+                connectionState = .disconnected
+                usage = nil
+                errorMessage = error.localizedDescription
+                await rpc.stop()
+            }
             throw error
         }
     }
 
     func refreshUsage() async {
+        guard connectionState == .connected else { return }
+        let generation = connectionGeneration
         do {
             let data = try await rpc.request("account/rateLimits/read", params: .object([:]))
+            guard generation == connectionGeneration, connectionState == .connected else { return }
             consecutiveTimeouts = 0
             let result = try Self.resultObject(data)
             let bucket = ((result["rateLimitsByLimitId"] as? [String: Any])?["codex"] as? [String: Any])
                 ?? (result["rateLimits"] as? [String: Any])
             guard let bucket else {
+                usage = nil
                 errorMessage = "Codex usage is unavailable."
                 return
             }
             let windows = Self.parseWindows(bucket)
+            guard !windows.isEmpty else {
+                usage = nil
+                errorMessage = "Codex usage is unavailable."
+                return
+            }
             usage = UsageSnapshot(fiveHour: windows[300], sevenDay: windows[10080], updatedAt: Date())
             errorMessage = nil
         } catch {
+            guard generation == connectionGeneration else { return }
+            usage = nil
             errorMessage = error.localizedDescription
             handleRequestError(error)
         }
     }
 
     func refreshThreads(preserving threadIDs: Set<String> = []) async {
+        guard connectionState == .connected else { return }
+        let generation = connectionGeneration
         do {
-            let page = try await loadThreadPage(cursor: nil)
+            let page = try await loadThreadPage()
+            guard generation == connectionGeneration, connectionState == .connected else { return }
+            consecutiveTimeouts = 0
             preservedThreadIDs = threadIDs
+            for thread in page {
+                metadataMisses.removeValue(forKey: thread.id)
+                metadataRetryAfter.removeValue(forKey: thread.id)
+            }
             let mapped = threads.filter { threadIDs.contains($0.id) }
-            threads = Array(uniqueThreads(page.threads + mapped).prefix(pageSize + mapped.count))
-            nextCursor = page.nextCursor
+            threads = Array(uniqueThreads(page + mapped).prefix(pageSize + mapped.count))
             errorMessage = nil
         } catch {
+            guard generation == connectionGeneration else { return }
             errorMessage = error.localizedDescription
             handleRequestError(error)
         }
     }
 
-    private func readThreadMetadata(_ id: String) async -> MetadataLookupResult {
+    private func readThreadMetadata(_ id: String, generation: UInt64) async -> MetadataLookupResult {
+        guard generation == connectionGeneration, connectionState == .connected else {
+            return MetadataLookupResult(thread: nil, isConfirmedMiss: false)
+        }
         let params: JSONValue = .object([
             "threadId": .string(id),
             "includeTurns": .bool(false)
         ])
         do {
             let data = try await rpc.request("thread/read", params: params)
+            guard generation == connectionGeneration, connectionState == .connected else {
+                return MetadataLookupResult(thread: nil, isConfirmedMiss: false)
+            }
             consecutiveTimeouts = 0
             let result = try Self.resultObject(data)
             let row = (result["thread"] as? [String: Any]) ?? result
@@ -428,23 +478,29 @@ final class CodexClient: ObservableObject {
             merge([metadata], preserving: [id])
             return MetadataLookupResult(thread: metadata, isConfirmedMiss: false)
         } catch {
-            handleRequestError(error)
+            if generation == connectionGeneration { handleRequestError(error) }
             return MetadataLookupResult(thread: nil, isConfirmedMiss: false)
         }
     }
 
     func findThreadMetadata(_ id: String) async -> CodexThread? {
+        guard connectionState == .connected else { return nil }
+        let generation = connectionGeneration
         if let cached = threads.first(where: { $0.id == id }) { return cached }
-        if let lookup = metadataLookups[id] { return await lookup.task.value.thread }
+        if let lookup = metadataLookups[id] {
+            let thread = await lookup.task.value.thread
+            return generation == connectionGeneration ? thread : nil
+        }
         if let miss = metadataMisses[id], Date().timeIntervalSince(miss) < 30 { return nil }
         if let retryAfter = metadataRetryAfter[id], retryAfter > Date() { return nil }
         let lookupID = UUID()
         let task = Task<MetadataLookupResult, Never> { [weak self] in
             guard let self else { return MetadataLookupResult(thread: nil, isConfirmedMiss: false) }
-            return await self.readThreadMetadata(id)
+            return await self.readThreadMetadata(id, generation: generation)
         }
         metadataLookups[id] = MetadataLookup(id: lookupID, task: task)
         let result = await task.value
+        guard generation == connectionGeneration else { return nil }
         if metadataLookups[id]?.id == lookupID {
             metadataLookups.removeValue(forKey: id)
             if result.isConfirmedMiss {
@@ -470,17 +526,24 @@ final class CodexClient: ObservableObject {
     }
 
     func prepareReconnect() async {
+        connectionGeneration &+= 1
+        usage = nil
         await rpc.stop()
         connectionState = .reconnecting
     }
 
     func shutdown() async {
+        connectionGeneration &+= 1
+        usage = nil
         connectionState = .disconnected
         await rpc.stop()
     }
 
-    func markReconnecting(_ error: Error) {
-        guard connectionState != .disconnected else { return }
+    func markReconnecting(_ error: Error, generation expectedGeneration: UInt64? = nil) {
+        guard expectedGeneration == nil || expectedGeneration == connectionGeneration,
+              connectionState != .disconnected else { return }
+        connectionGeneration &+= 1
+        usage = nil
         connectionState = .reconnecting
         errorMessage = error.localizedDescription
     }
@@ -491,9 +554,13 @@ final class CodexClient: ObservableObject {
         switch transportError {
         case .timeout:
             consecutiveTimeouts += 1
-            if consecutiveTimeouts >= 2 { connectionState = .reconnecting }
+            if consecutiveTimeouts >= 2 {
+                usage = nil
+                connectionState = .reconnecting
+            }
         case .closed, .invalidJSON, .write:
             consecutiveTimeouts = 0
+            usage = nil
             connectionState = .reconnecting
         case .unavailable, .server:
             consecutiveTimeouts = 0
@@ -520,30 +587,39 @@ final class CodexClient: ObservableObject {
         return values.filter { seen.insert($0.id).inserted }
     }
 
-    private func loadThreadPage(cursor: String?) async throws -> (threads: [CodexThread], nextCursor: String?) {
-        var values: [String: JSONValue] = [
+    private func loadThreadPage() async throws -> [CodexThread] {
+        let values: [String: JSONValue] = [
             "limit": .number(Double(pageSize)),
             "sourceKinds": .array([.string("vscode"), .string("appServer"), .string("cli")]),
             "useStateDbOnly": .bool(true)
         ]
-        if let cursor { values["cursor"] = .string(cursor) }
         let data = try await rpc.request("thread/list", params: .object(values))
-        consecutiveTimeouts = 0
         let result = try Self.resultObject(data)
         guard let rows = result["data"] as? [[String: Any]] else {
             throw RPCTransportError.server("Codex App Server returned thread/list without result.data.")
         }
-        return (rows.compactMap(Self.parseThread), result["nextCursor"] as? String)
+        return rows.compactMap(Self.parseThread)
     }
 
-    private func receiveNotification(_ data: Data) {
+    private func receiveNotification(_ data: Data, generation: UInt64) {
+        guard generation == connectionGeneration, connectionState == .connected else { return }
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              object["method"] as? String == "account/rateLimits/updated",
-              let params = object["params"] as? [String: Any] else { return }
+              object["method"] as? String == "account/rateLimits/updated" else { return }
+        guard let params = object["params"] as? [String: Any] else {
+            usage = nil
+            return
+        }
         let bucket = ((params["rateLimitsByLimitId"] as? [String: Any])?["codex"] as? [String: Any])
             ?? (params["rateLimits"] as? [String: Any])
-        guard let bucket else { return }
+        guard let bucket else {
+            usage = nil
+            return
+        }
         let windows = Self.parseWindows(bucket)
+        guard !windows.isEmpty else {
+            usage = nil
+            return
+        }
         usage = UsageSnapshot(fiveHour: windows[300], sevenDay: windows[10080], updatedAt: Date())
     }
 
@@ -568,9 +644,12 @@ final class CodexClient: ObservableObject {
                   CFGetTypeID(usedValue) != CFBooleanGetTypeID(),
                   usedValue.doubleValue.isFinite,
                   let durationValue = window["windowDurationMins"] as? NSNumber,
-                  CFGetTypeID(durationValue) != CFBooleanGetTypeID() else { continue }
+                  CFGetTypeID(durationValue) != CFBooleanGetTypeID(),
+                  durationValue.doubleValue.isFinite,
+                  durationValue.doubleValue.rounded(.towardZero) == durationValue.doubleValue else { continue }
             let duration = durationValue.intValue
-            guard duration == 300 || duration == 10080 else { continue }
+            guard durationValue.doubleValue == Double(duration),
+                  duration == 300 || duration == 10080 else { continue }
             let used = min(100, max(0, usedValue.doubleValue))
             windows[duration] = UsageWindow(
                 durationMinutes: duration,
@@ -583,14 +662,10 @@ final class CodexClient: ObservableObject {
 
     private static func parseThread(_ row: [String: Any]) -> CodexThread? {
         guard let id = row["id"] as? String, !id.isEmpty else { return nil }
-        let statusObject = row["status"] as? [String: Any]
-        let status = statusObject?["type"] as? String ?? row["status"] as? String
         return CodexThread(
             id: id,
             title: (row["name"] as? String) ?? (row["title"] as? String) ?? "Untitled thread",
             source: row["source"] as? String,
-            originator: row["originator"] as? String,
-            apiStatus: status,
             createdAt: parseDate(row["createdAt"]),
             updatedAt: parseDate(row["updatedAt"])
         )

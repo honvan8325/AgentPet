@@ -100,7 +100,7 @@ final class DashboardWindowController {
     init(model: AgentPetModel) {
         self.model = model
         window = NSWindow(
-            contentRect: CGRect(x: 0, y: 0, width: 390, height: 500),
+            contentRect: CGRect(x: 0, y: 0, width: 440, height: 620),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
