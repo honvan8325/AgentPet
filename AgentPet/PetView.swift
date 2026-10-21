@@ -595,8 +595,6 @@ struct PetView: View {
         let taskBubble = SpriteAssets.shared.manifest?.hud.taskBubble
         let bubbleWidth = CGFloat(taskBubble?.size.first ?? 20)
         let bubbleHeight = CGFloat(taskBubble?.size.dropFirst().first ?? 19)
-        let numberX = CGFloat(taskBubble?.numberPosition.first ?? 6)
-        let numberY = CGFloat(taskBubble?.numberPosition.dropFirst().first ?? 5)
         VStack(spacing: 4 * pixelScale) {
             ZStack(alignment: .topTrailing) {
                 SpriteFrameView(playback: animator.playback, isPaused: animator.isPaused)
@@ -607,11 +605,11 @@ struct PetView: View {
                         .interpolation(.none)
                         .resizable()
                         .frame(width: bubbleWidth * pixelScale, height: bubbleHeight * pixelScale)
-                        .overlay(alignment: .topLeading) {
+                        .overlay {
                             PixelDigits(text: "\(min(runningCount, 99))", scale: pixelScale)
-                                .offset(x: numberX * pixelScale, y: numberY * pixelScale)
+                                .offset(y: -1 * pixelScale)
                         }
-                        .offset(x: 10 * pixelScale, y: -8 * pixelScale)
+                        .offset(x: -12 * pixelScale, y: 8 * pixelScale)
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel("\(runningCount) Codex tasks running")
                         .transition(.scale.combined(with: .opacity))
