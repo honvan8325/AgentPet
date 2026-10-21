@@ -622,6 +622,7 @@ struct PetView: View {
             if model.showUsageHUD {
                 PixelHUDView(snapshot: codex.usage, scale: pixelScale)
                     .frame(width: 36 * pixelScale, height: 14 * pixelScale)
+                    .offset(y: -6 * pixelScale)
             }
         }
         .padding(.top, 8 * pixelScale)
