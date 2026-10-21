@@ -1,0 +1,610 @@
+import AppKit
+import Combine
+import CoreFoundation
+import Darwin
+import Foundation
+
+enum JSONValue: Codable, Sendable {
+    case object([String: JSONValue])
+    case array([JSONValue])
+    case string(String)
+    case number(Double)
+    case bool(Bool)
+    case null
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            self = .null
+        } else if let value = try? container.decode(Bool.self) {
+            self = .bool(value)
+        } else if let value = try? container.decode(Double.self) {
+            self = .number(value)
+        } else if let value = try? container.decode(String.self) {
+            self = .string(value)
+        } else if let value = try? container.decode([JSONValue].self) {
+            self = .array(value)
+        } else {
+            self = .object(try container.decode([String: JSONValue].self))
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .object(let value): try container.encode(value)
+        case .array(let value): try container.encode(value)
+        case .string(let value): try container.encode(value)
+        case .number(let value): try container.encode(value)
+        case .bool(let value): try container.encode(value)
+        case .null: try container.encodeNil()
+        }
+    }
+}
+
+enum RPCTransportError: LocalizedError {
+    case unavailable(String)
+    case timeout
+    case closed
+    case invalidJSON
+    case write(String)
+    case server(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .unavailable(let message), .server(let message), .write(let message): message
+        case .timeout: "Codex App Server did not respond in time."
+        case .closed: "Codex App Server closed the connection."
+        case .invalidJSON: "Codex App Server returned invalid JSON."
+        }
+    }
+}
+
+actor CodexRPC {
+    private let executable = URL(fileURLWithPath: "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex")
+    private var process: Process?
+    private var input: Pipe?
+    private var output: Pipe?
+    private var readerTask: Task<Void, Never>?
+    private var buffer = Data()
+    private var transportFailed = false
+    private var nextID = 1
+    private var generation: UInt64 = 0
+    private var pending: [Int: CheckedContinuation<Data, Error>] = [:]
+    private var timeouts: [Int: Task<Void, Never>] = [:]
+    private var notificationHandler: (@Sendable (Data) -> Void)?
+    private var disconnectHandler: (@Sendable () -> Void)?
+
+    func setHandlers(
+        notification: @escaping @Sendable (Data) -> Void,
+        disconnect: @escaping @Sendable () -> Void
+    ) {
+        notificationHandler = notification
+        disconnectHandler = disconnect
+    }
+
+    func start() async throws {
+        if process?.isRunning == true && !transportFailed { return }
+        if process != nil { await stop() }
+
+        generation &+= 1
+        let currentGeneration = generation
+        let process = Process()
+        let input = Pipe()
+        let output = Pipe()
+        process.executableURL = executable
+        process.arguments = ["app-server"]
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        process.terminationHandler = { [weak self] _ in
+            Task { await self?.processDidExit(generation: currentGeneration) }
+        }
+        self.process = process
+        self.input = input
+        self.output = output
+        buffer.removeAll(keepingCapacity: true)
+        transportFailed = false
+
+        do {
+            try process.run()
+        } catch {
+            self.process = nil
+            self.input = nil
+            self.output = nil
+            try? input.fileHandleForWriting.close()
+            try? output.fileHandleForReading.close()
+            throw RPCTransportError.unavailable(error.localizedDescription)
+        }
+
+        let readDescriptor = output.fileHandleForReading.fileDescriptor
+        readerTask = Task.detached(priority: .utility) { [weak self] in
+            var bytes = [UInt8](repeating: 0, count: 65_536)
+            while !Task.isCancelled {
+                var descriptor = pollfd(fd: readDescriptor, events: Int16(POLLIN | POLLHUP), revents: 0)
+                let ready = Darwin.poll(&descriptor, 1, 250)
+                if ready < 0 && errno == EINTR { continue }
+                if ready < 0 { break }
+                if ready == 0 { continue }
+                let count = bytes.withUnsafeMutableBytes { buffer in
+                    Darwin.read(readDescriptor, buffer.baseAddress, buffer.count)
+                }
+                if count < 0 && errno == EINTR { continue }
+                guard count > 0 else { break }
+                await self?.receive(Data(bytes.prefix(count)), generation: currentGeneration)
+            }
+            await self?.processDidExit(generation: currentGeneration)
+        }
+
+        let params: JSONValue = .object([
+            "clientInfo": .object([
+                "name": .string("agentpet"),
+                "title": .string("AgentPet"),
+                "version": .string("1.0.0")
+            ])
+        ])
+        let response = try await request("initialize", params: params, timeout: 20)
+        try Self.checkServerError(response)
+        try sendNotification("initialized", params: .object([:]))
+    }
+
+    func request(_ method: String, params: JSONValue, timeout: Double = 15) async throws -> Data {
+        guard process?.isRunning == true, !transportFailed, let input else { throw RPCTransportError.closed }
+        let id = nextID
+        nextID += 1
+        let message: [String: JSONValue] = [
+            "id": .number(Double(id)),
+            "method": .string(method),
+            "params": params
+        ]
+        let encoded = try Self.encodeLine(.object(message))
+
+        return try await withCheckedThrowingContinuation { continuation in
+            pending[id] = continuation
+            timeouts[id] = Task { [weak self] in
+                do {
+                    try await Task.sleep(for: .seconds(timeout))
+                    await self?.timeout(id)
+                } catch {}
+            }
+            do {
+                try input.fileHandleForWriting.write(contentsOf: encoded)
+            } catch {
+                timeouts.removeValue(forKey: id)?.cancel()
+                pending.removeValue(forKey: id)?.resume(throwing: RPCTransportError.write(error.localizedDescription))
+            }
+        }
+    }
+
+    func sendNotification(_ method: String, params: JSONValue) throws {
+        guard process?.isRunning == true, !transportFailed, let input else { throw RPCTransportError.closed }
+        let message: JSONValue = .object([
+            "method": .string(method),
+            "params": params
+        ])
+        do {
+            try input.fileHandleForWriting.write(contentsOf: Self.encodeLine(message))
+        } catch {
+            throw RPCTransportError.write(error.localizedDescription)
+        }
+    }
+
+    func stop() async {
+        generation &+= 1
+        let oldProcess = process
+        let oldInput = input
+        let oldOutput = output
+        let oldReader = readerTask
+        process = nil
+        readerTask = nil
+        failPending(RPCTransportError.closed)
+        oldReader?.cancel()
+        try? oldInput?.fileHandleForWriting.close()
+        input = nil
+        output = nil
+        buffer.removeAll(keepingCapacity: false)
+        transportFailed = false
+        if let oldProcess, oldProcess.isRunning {
+            oldProcess.terminate()
+            let deadline = ContinuousClock.now + .seconds(2)
+            while oldProcess.isRunning && ContinuousClock.now < deadline {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            if oldProcess.isRunning {
+                _ = Darwin.kill(oldProcess.processIdentifier, SIGKILL)
+                let killDeadline = ContinuousClock.now + .seconds(1)
+                while oldProcess.isRunning && ContinuousClock.now < killDeadline {
+                    try? await Task.sleep(for: .milliseconds(25))
+                }
+            }
+        }
+        try? oldOutput?.fileHandleForReading.close()
+        if let oldReader { await oldReader.value }
+    }
+
+    private func receive(_ data: Data, generation: UInt64) {
+        guard generation == self.generation, !transportFailed else { return }
+        buffer.append(data)
+        while let newline = buffer.firstIndex(of: 0x0A) {
+            let line = Data(buffer[..<newline])
+            buffer.removeSubrange(...newline)
+            guard !line.isEmpty else { continue }
+            guard let message = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else {
+                failTransport(RPCTransportError.invalidJSON)
+                return
+            }
+
+            if let number = message["id"] as? NSNumber {
+                let id = number.intValue
+                timeouts.removeValue(forKey: id)?.cancel()
+                pending.removeValue(forKey: id)?.resume(returning: line)
+            } else if message["method"] != nil {
+                notificationHandler?(line)
+            }
+        }
+        if buffer.count > 8_388_608 { failTransport(RPCTransportError.invalidJSON) }
+    }
+
+    private func failTransport(_ error: Error) {
+        guard !transportFailed else { return }
+        transportFailed = true
+        buffer.removeAll(keepingCapacity: false)
+        failPending(error)
+        process?.terminate()
+    }
+
+    private func timeout(_ id: Int) {
+        timeouts.removeValue(forKey: id)
+        pending.removeValue(forKey: id)?.resume(throwing: RPCTransportError.timeout)
+    }
+
+    private func processDidExit(generation: UInt64) {
+        guard generation == self.generation, process != nil,
+              (input != nil || output != nil) else { return }
+        let oldProcess = process
+        transportFailed = true
+        readerTask?.cancel()
+        readerTask = nil
+        try? input?.fileHandleForWriting.close()
+        try? output?.fileHandleForReading.close()
+        input = nil
+        output = nil
+        buffer.removeAll(keepingCapacity: false)
+        failPending(RPCTransportError.closed)
+        if oldProcess?.isRunning == true { oldProcess?.terminate() }
+        disconnectHandler?()
+    }
+
+    private func failPending(_ error: Error) {
+        for task in timeouts.values { task.cancel() }
+        timeouts.removeAll()
+        let continuations = pending.values
+        pending.removeAll()
+        for continuation in continuations { continuation.resume(throwing: error) }
+    }
+
+    private static func encodeLine(_ value: JSONValue) throws -> Data {
+        var data = try JSONEncoder().encode(value)
+        data.append(0x0A)
+        return data
+    }
+
+    private static func checkServerError(_ data: Data) throws {
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw RPCTransportError.invalidJSON
+        }
+        if let error = object["error"] as? [String: Any] {
+            throw RPCTransportError.server(error["message"] as? String ?? "Codex App Server initialization failed.")
+        }
+    }
+}
+
+struct UsageWindow: Identifiable, Hashable {
+    let durationMinutes: Int
+    let remaining: Double
+    let resetAt: Date?
+
+    var id: Int { durationMinutes }
+    var label: String {
+        switch durationMinutes {
+        case 300: "5H"
+        case 10080: "7D"
+        default: "\(durationMinutes)m"
+        }
+    }
+}
+
+struct UsageSnapshot {
+    let fiveHour: UsageWindow?
+    let sevenDay: UsageWindow?
+    let updatedAt: Date
+}
+
+@MainActor
+final class CodexClient: ObservableObject {
+    enum ConnectionState: Equatable {
+        case connecting, connected, reconnecting, disconnected
+    }
+
+    @Published private(set) var connectionState: ConnectionState = .disconnected
+    @Published private(set) var usage: UsageSnapshot?
+    @Published private(set) var threads: [CodexThread] = []
+    @Published private(set) var errorMessage: String?
+
+    private struct MetadataLookup {
+        let id: UUID
+        let task: Task<MetadataLookupResult, Never>
+    }
+
+    private struct MetadataLookupResult {
+        let thread: CodexThread?
+        let isConfirmedMiss: Bool
+    }
+
+    private let rpc = CodexRPC()
+    private var nextCursor: String?
+    private var metadataLookups: [String: MetadataLookup] = [:]
+    private var metadataMisses: [String: Date] = [:]
+    private var metadataRetryAfter: [String: Date] = [:]
+    private var preservedThreadIDs = Set<String>()
+    private var consecutiveTimeouts = 0
+    private let pageSize = 50
+    var hasMoreThreads: Bool { nextCursor != nil }
+
+    func connect(reconnecting: Bool) async throws {
+        connectionState = reconnecting ? .reconnecting : .connecting
+        for lookup in metadataLookups.values { lookup.task.cancel() }
+        metadataLookups.removeAll(keepingCapacity: true)
+        metadataMisses.removeAll(keepingCapacity: true)
+        metadataRetryAfter.removeAll(keepingCapacity: true)
+        await rpc.setHandlers(
+            notification: { [weak self] data in
+                Task { @MainActor in self?.receiveNotification(data) }
+            },
+            disconnect: { [weak self] in
+                Task { @MainActor in self?.markReconnecting(RPCTransportError.closed) }
+            }
+        )
+        do {
+            try await rpc.start()
+            connectionState = .connected
+            consecutiveTimeouts = 0
+            errorMessage = nil
+        } catch {
+            connectionState = .disconnected
+            errorMessage = error.localizedDescription
+            await rpc.stop()
+            throw error
+        }
+    }
+
+    func refreshUsage() async {
+        do {
+            let data = try await rpc.request("account/rateLimits/read", params: .object([:]))
+            consecutiveTimeouts = 0
+            let result = try Self.resultObject(data)
+            let bucket = ((result["rateLimitsByLimitId"] as? [String: Any])?["codex"] as? [String: Any])
+                ?? (result["rateLimits"] as? [String: Any])
+            guard let bucket else {
+                errorMessage = "Codex usage is unavailable."
+                return
+            }
+            let windows = Self.parseWindows(bucket)
+            usage = UsageSnapshot(fiveHour: windows[300], sevenDay: windows[10080], updatedAt: Date())
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+            handleRequestError(error)
+        }
+    }
+
+    func refreshThreads(preserving threadIDs: Set<String> = []) async {
+        do {
+            let page = try await loadThreadPage(cursor: nil)
+            preservedThreadIDs = threadIDs
+            let mapped = threads.filter { threadIDs.contains($0.id) }
+            threads = Array(uniqueThreads(page.threads + mapped).prefix(pageSize + mapped.count))
+            nextCursor = page.nextCursor
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+            handleRequestError(error)
+        }
+    }
+
+    private func readThreadMetadata(_ id: String) async -> MetadataLookupResult {
+        let params: JSONValue = .object([
+            "threadId": .string(id),
+            "includeTurns": .bool(false)
+        ])
+        do {
+            let data = try await rpc.request("thread/read", params: params)
+            consecutiveTimeouts = 0
+            let result = try Self.resultObject(data)
+            let row = (result["thread"] as? [String: Any]) ?? result
+            guard let metadata = Self.parseThread(row), metadata.id == id else {
+                return MetadataLookupResult(thread: nil, isConfirmedMiss: true)
+            }
+            merge([metadata], preserving: [id])
+            return MetadataLookupResult(thread: metadata, isConfirmedMiss: false)
+        } catch {
+            handleRequestError(error)
+            return MetadataLookupResult(thread: nil, isConfirmedMiss: false)
+        }
+    }
+
+    func findThreadMetadata(_ id: String) async -> CodexThread? {
+        if let cached = threads.first(where: { $0.id == id }) { return cached }
+        if let lookup = metadataLookups[id] { return await lookup.task.value.thread }
+        if let miss = metadataMisses[id], Date().timeIntervalSince(miss) < 30 { return nil }
+        if let retryAfter = metadataRetryAfter[id], retryAfter > Date() { return nil }
+        let lookupID = UUID()
+        let task = Task<MetadataLookupResult, Never> { [weak self] in
+            guard let self else { return MetadataLookupResult(thread: nil, isConfirmedMiss: false) }
+            return await self.readThreadMetadata(id)
+        }
+        metadataLookups[id] = MetadataLookup(id: lookupID, task: task)
+        let result = await task.value
+        if metadataLookups[id]?.id == lookupID {
+            metadataLookups.removeValue(forKey: id)
+            if result.isConfirmedMiss {
+                metadataMisses[id] = Date()
+                metadataRetryAfter.removeValue(forKey: id)
+                if metadataMisses.count > 200,
+                   let oldest = metadataMisses.min(by: { $0.value < $1.value })?.key {
+                    metadataMisses.removeValue(forKey: oldest)
+                }
+            } else if result.thread == nil {
+                metadataRetryAfter[id] = Date().addingTimeInterval(2)
+                metadataMisses.removeValue(forKey: id)
+                if metadataRetryAfter.count > 200,
+                   let oldest = metadataRetryAfter.min(by: { $0.value < $1.value })?.key {
+                    metadataRetryAfter.removeValue(forKey: oldest)
+                }
+            } else {
+                metadataRetryAfter.removeValue(forKey: id)
+                metadataMisses.removeValue(forKey: id)
+            }
+        }
+        return result.thread
+    }
+
+    func prepareReconnect() async {
+        await rpc.stop()
+        connectionState = .reconnecting
+    }
+
+    func shutdown() async {
+        connectionState = .disconnected
+        await rpc.stop()
+    }
+
+    func markReconnecting(_ error: Error) {
+        guard connectionState != .disconnected else { return }
+        connectionState = .reconnecting
+        errorMessage = error.localizedDescription
+    }
+
+    private func handleRequestError(_ error: Error) {
+        errorMessage = error.localizedDescription
+        guard let transportError = error as? RPCTransportError else { return }
+        switch transportError {
+        case .timeout:
+            consecutiveTimeouts += 1
+            if consecutiveTimeouts >= 2 { connectionState = .reconnecting }
+        case .closed, .invalidJSON, .write:
+            consecutiveTimeouts = 0
+            connectionState = .reconnecting
+        case .unavailable, .server:
+            consecutiveTimeouts = 0
+        }
+    }
+
+    private func merge(_ additions: [CodexThread], preserving extraIDs: Set<String> = []) {
+        for thread in additions {
+            if let index = threads.firstIndex(where: { $0.id == thread.id }) {
+                threads[index] = thread
+            } else {
+                threads.append(thread)
+            }
+        }
+        let recent = threads.sorted {
+            ($0.updatedAt ?? $0.createdAt ?? .distantPast) > ($1.updatedAt ?? $1.createdAt ?? .distantPast)
+        }.prefix(pageSize)
+        let mapped = threads.filter { preservedThreadIDs.contains($0.id) || extraIDs.contains($0.id) }
+        threads = Array(uniqueThreads(Array(recent) + mapped))
+    }
+
+    private func uniqueThreads(_ values: [CodexThread]) -> [CodexThread] {
+        var seen = Set<String>()
+        return values.filter { seen.insert($0.id).inserted }
+    }
+
+    private func loadThreadPage(cursor: String?) async throws -> (threads: [CodexThread], nextCursor: String?) {
+        var values: [String: JSONValue] = [
+            "limit": .number(Double(pageSize)),
+            "sourceKinds": .array([.string("vscode"), .string("appServer"), .string("cli")]),
+            "useStateDbOnly": .bool(true)
+        ]
+        if let cursor { values["cursor"] = .string(cursor) }
+        let data = try await rpc.request("thread/list", params: .object(values))
+        consecutiveTimeouts = 0
+        let result = try Self.resultObject(data)
+        guard let rows = result["data"] as? [[String: Any]] else {
+            throw RPCTransportError.server("Codex App Server returned thread/list without result.data.")
+        }
+        return (rows.compactMap(Self.parseThread), result["nextCursor"] as? String)
+    }
+
+    private func receiveNotification(_ data: Data) {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              object["method"] as? String == "account/rateLimits/updated",
+              let params = object["params"] as? [String: Any] else { return }
+        let bucket = ((params["rateLimitsByLimitId"] as? [String: Any])?["codex"] as? [String: Any])
+            ?? (params["rateLimits"] as? [String: Any])
+        guard let bucket else { return }
+        let windows = Self.parseWindows(bucket)
+        usage = UsageSnapshot(fiveHour: windows[300], sevenDay: windows[10080], updatedAt: Date())
+    }
+
+    private static func resultObject(_ data: Data) throws -> [String: Any] {
+        guard let response = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw RPCTransportError.invalidJSON
+        }
+        if let error = response["error"] as? [String: Any] {
+            throw RPCTransportError.server(error["message"] as? String ?? "Codex App Server request failed.")
+        }
+        guard let result = response["result"] as? [String: Any] else {
+            throw RPCTransportError.server("Codex App Server response did not contain a result.")
+        }
+        return result
+    }
+
+    private static func parseWindows(_ bucket: [String: Any]) -> [Int: UsageWindow] {
+        var windows: [Int: UsageWindow] = [:]
+        for key in ["primary", "secondary"] {
+            guard let window = bucket[key] as? [String: Any],
+                  let usedValue = window["usedPercent"] as? NSNumber,
+                  CFGetTypeID(usedValue) != CFBooleanGetTypeID(),
+                  usedValue.doubleValue.isFinite,
+                  let durationValue = window["windowDurationMins"] as? NSNumber,
+                  CFGetTypeID(durationValue) != CFBooleanGetTypeID() else { continue }
+            let duration = durationValue.intValue
+            guard duration == 300 || duration == 10080 else { continue }
+            let used = min(100, max(0, usedValue.doubleValue))
+            windows[duration] = UsageWindow(
+                durationMinutes: duration,
+                remaining: 100 - used,
+                resetAt: parseDate(window["resetsAt"])
+            )
+        }
+        return windows
+    }
+
+    private static func parseThread(_ row: [String: Any]) -> CodexThread? {
+        guard let id = row["id"] as? String, !id.isEmpty else { return nil }
+        let statusObject = row["status"] as? [String: Any]
+        let status = statusObject?["type"] as? String ?? row["status"] as? String
+        return CodexThread(
+            id: id,
+            title: (row["name"] as? String) ?? (row["title"] as? String) ?? "Untitled thread",
+            source: row["source"] as? String,
+            originator: row["originator"] as? String,
+            apiStatus: status,
+            createdAt: parseDate(row["createdAt"]),
+            updatedAt: parseDate(row["updatedAt"])
+        )
+    }
+
+    private static func parseDate(_ value: Any?) -> Date? {
+        if let number = value as? NSNumber,
+           CFGetTypeID(number) != CFBooleanGetTypeID(),
+           number.doubleValue.isFinite {
+            return Date(timeIntervalSince1970: number.doubleValue)
+        }
+        if let string = value as? String {
+            return ISO8601DateFormatter().date(from: string)
+        }
+        return nil
+    }
+}

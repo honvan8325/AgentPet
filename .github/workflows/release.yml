@@ -1,0 +1,299 @@
+name: Release AgentPet
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agentpet-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+      SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate tag
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="$GITHUB_REF_NAME"
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Invalid release tag: $TAG"
+            exit 1
+          fi
+          VERSION="${TAG#v}"
+          version_is_greater() {
+            local left_major left_minor left_patch right_major right_minor right_patch
+            IFS=. read -r left_major left_minor left_patch <<< "$1"
+            IFS=. read -r right_major right_minor right_patch <<< "$2"
+            if ((10#$left_major > 10#$right_major)); then return 0; fi
+            if ((10#$left_major < 10#$right_major)); then return 1; fi
+            if ((10#$left_minor > 10#$right_minor)); then return 0; fi
+            if ((10#$left_minor < 10#$right_minor)); then return 1; fi
+            ((10#$left_patch > 10#$right_patch))
+          }
+          while IFS= read -r released_tag; do
+            [[ "$released_tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || continue
+            if version_is_greater "${released_tag#v}" "$VERSION"; then
+              echo "::error::Refusing to publish $TAG because a newer release already exists ($released_tag)"
+              exit 1
+            fi
+          done < <(gh release list --limit 1000 --json tagName --jq '.[].tagName')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Configure signed update feed
+        id: feed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$SPARKLE_PRIVATE_KEY" ]]; then
+            echo "::error::SPARKLE_PRIVATE_KEY is not configured"
+            exit 1
+          fi
+          if [[ -z "$SPARKLE_PUBLIC_ED_KEY" ]]; then
+            echo "::error::SUPublicEDKey is missing; configure the SPARKLE_PUBLIC_ED_KEY repository variable"
+            exit 1
+          fi
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          REPOSITORY="${GITHUB_REPOSITORY#*/}"
+          if [[ "$REPOSITORY" == "$OWNER.github.io" ]]; then
+            FEED_URL="https://${OWNER}.github.io/appcast.xml"
+          else
+            FEED_URL="https://${OWNER}.github.io/${REPOSITORY}/appcast.xml"
+          fi
+          echo "url=$FEED_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve Swift packages
+        run: >-
+          xcodebuild -resolvePackageDependencies
+          -project AgentPet.xcodeproj
+          -scheme AgentPet
+          -derivedDataPath "$RUNNER_TEMP/DerivedData"
+
+      - name: Build Release app
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SU_FEED_URL: ${{ steps.feed.outputs.url }}
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project AgentPet.xcodeproj \
+            -scheme AgentPet \
+            -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="$VERSION" \
+            SU_FEED_URL="$SU_FEED_URL" \
+            SU_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY" \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- \
+            DEVELOPMENT_TEAM="" \
+            build
+
+      - name: Verify app bundle
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SU_FEED_URL: ${{ steps.feed.outputs.url }}
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/DerivedData/Build/Products/Release/AgentPet.app"
+          HELPER="$APP/Contents/Helpers/AgentPetHook"
+          test -d "$APP"
+          test -x "$APP/Contents/MacOS/AgentPet"
+          test -x "$HELPER"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")" = "com.agentpet.app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")" = "$VERSION"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")" = "$VERSION"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist")" = "$SPARKLE_PUBLIC_ED_KEY"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$APP/Contents/Info.plist")" = "$SU_FEED_URL"
+          for atlas in fresh focused tired exhausted empty; do
+            test -f "$APP/Contents/Resources/$atlas.png"
+          done
+          test -d "$APP/Contents/Frameworks/Sparkle.framework"
+          test "$(lipo -archs "$HELPER")" = "arm64"
+          codesign --verify --strict "$APP"
+          codesign --verify --strict "$APP/Contents/Frameworks/Sparkle.framework"
+
+      - name: Create DMG, ZIP, and checksums
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/DerivedData/Build/Products/Release/AgentPet.app"
+          DIST="$RUNNER_TEMP/AgentPet-dist"
+          STAGE="$RUNNER_TEMP/AgentPet-dmg"
+          mkdir -p "$DIST" "$STAGE"
+          ditto "$APP" "$STAGE/AgentPet.app"
+          ln -s /Applications "$STAGE/Applications"
+          hdiutil create \
+            -volname "AgentPet" \
+            -srcfolder "$STAGE" \
+            -format UDZO \
+            -ov \
+            "$DIST/AgentPet-${VERSION}.dmg"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$APP" \
+            "$DIST/AgentPet-${VERSION}.zip"
+          (
+            cd "$DIST"
+            shasum -a 256 \
+              "AgentPet-${VERSION}.dmg" \
+              "AgentPet-${VERSION}.zip" \
+              > SHA256SUMS.txt
+          )
+
+      - name: Generate and verify signed appcast
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SU_FEED_URL: ${{ steps.feed.outputs.url }}
+        run: |
+          set -euo pipefail
+          DIST="$RUNNER_TEMP/AgentPet-dist"
+          UPDATE_DIR="$RUNNER_TEMP/AgentPet-updates"
+          TAG="$GITHUB_REF_NAME"
+          mkdir -p "$UPDATE_DIR"
+          GENERATE_APPCAST="$(find "$RUNNER_TEMP/DerivedData/SourcePackages/artifacts" \
+            -type f -path '*/Sparkle/bin/generate_appcast' -print -quit)"
+          GENERATE_KEYS="$(find "$RUNNER_TEMP/DerivedData/SourcePackages/artifacts" \
+            -type f -path '*/Sparkle/bin/generate_keys' -print -quit)"
+          SIGN_UPDATE="$(find "$RUNNER_TEMP/DerivedData/SourcePackages/artifacts" \
+            -type f -path '*/Sparkle/bin/sign_update' -print -quit)"
+          if [[ -z "$GENERATE_APPCAST" || ! -x "$GENERATE_APPCAST" ]]; then
+            echo "::error::Sparkle generate_appcast was not found in the resolved package"
+            exit 1
+          fi
+          if [[ -z "$GENERATE_KEYS" || ! -x "$GENERATE_KEYS" || -z "$SIGN_UPDATE" || ! -x "$SIGN_UPDATE" ]]; then
+            echo "::error::Sparkle key and signature verification tools were not found in the resolved package"
+            exit 1
+          fi
+          KEY_FILE="$(mktemp "$RUNNER_TEMP/sparkle-private-key.XXXXXX")"
+          chmod 600 "$KEY_FILE"
+          trap 'rm -f "$KEY_FILE"' EXIT
+          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$KEY_FILE"
+          "$GENERATE_KEYS" --account agentpet-release -f "$KEY_FILE" >/dev/null
+          DERIVED_PUBLIC_KEY="$("$GENERATE_KEYS" --account agentpet-release -p)"
+          if [[ "$DERIVED_PUBLIC_KEY" != "$SPARKLE_PUBLIC_ED_KEY" ]]; then
+            echo "::error::SPARKLE_PRIVATE_KEY does not match SPARKLE_PUBLIC_ED_KEY"
+            exit 1
+          fi
+          rm -f "$KEY_FILE"
+          trap - EXIT
+          ZIP="$DIST/AgentPet-${VERSION}.zip"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            EXISTING="$RUNNER_TEMP/existing-release"
+            mkdir -p "$EXISTING"
+            gh release download "$TAG" \
+              --pattern "AgentPet-${VERSION}.dmg" \
+              --pattern "AgentPet-${VERSION}.zip" \
+              --pattern SHA256SUMS.txt \
+              --dir "$EXISTING"
+            (
+              cd "$EXISTING"
+              shasum -a 256 -c SHA256SUMS.txt
+            )
+            EXTRACTED="$RUNNER_TEMP/existing-release-app"
+            mkdir -p "$EXTRACTED"
+            ditto -x -k "$EXISTING/AgentPet-${VERSION}.zip" "$EXTRACTED"
+            EXISTING_APP="$EXTRACTED/AgentPet.app"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$EXISTING_APP/Contents/Info.plist")" = "com.agentpet.app"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$EXISTING_APP/Contents/Info.plist")" = "$VERSION"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$EXISTING_APP/Contents/Info.plist")" = "$SPARKLE_PUBLIC_ED_KEY"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$EXISTING_APP/Contents/Info.plist")" = "$SU_FEED_URL"
+            ditto "$EXISTING/AgentPet-${VERSION}.zip" "$ZIP"
+          else
+            ditto "$ZIP" "$UPDATE_DIR/AgentPet-${VERSION}.zip"
+          fi
+          DOWNLOAD_URL_PREFIX="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/"
+          printf '%s' "$SPARKLE_PRIVATE_KEY" | "$GENERATE_APPCAST" \
+            --download-url-prefix "$DOWNLOAD_URL_PREFIX" \
+            --ed-key-file - \
+            "$UPDATE_DIR"
+          APPCAST="$UPDATE_DIR/appcast.xml"
+          ZIP_SIZE="$(stat -f%z "$ZIP")"
+          test -s "$APPCAST"
+          grep -Fq "${DOWNLOAD_URL_PREFIX}AgentPet-${VERSION}.zip" "$APPCAST"
+          grep -Fq "sparkle:version=\"${VERSION}\"" "$APPCAST"
+          grep -Fq "length=\"${ZIP_SIZE}\"" "$APPCAST"
+          SIGNATURE_ATTRIBUTE="$(grep -oE 'sparkle:edSignature="[^"]+"' "$APPCAST" | head -n 1)"
+          SIGNATURE="${SIGNATURE_ATTRIBUTE#sparkle:edSignature=\"}"
+          SIGNATURE="${SIGNATURE%\"}"
+          if [[ -z "$SIGNATURE" ]]; then
+            echo "::error::Sparkle appcast has no EdDSA signature"
+            exit 1
+          fi
+          printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SIGN_UPDATE" \
+            "$ZIP" \
+            --verify \
+            "$SIGNATURE" \
+            --ed-key-file -
+
+      - name: Publish GitHub Release
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          DIST="$RUNNER_TEMP/AgentPet-dist"
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" \
+              "$DIST/AgentPet-${VERSION}.dmg" \
+              "$DIST/AgentPet-${VERSION}.zip" \
+              "$DIST/SHA256SUMS.txt" \
+              --title "AgentPet ${VERSION}" \
+              --generate-notes \
+              --verify-tag
+          fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: agentpet-appcast
+          path: ${{ runner.temp }}/AgentPet-updates/appcast.xml
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy-appcast:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: agentpet-appcast
+          path: appcast
+
+      - uses: actions/configure-pages@v6
+
+      - name: Prepare Pages output
+        run: |
+          set -euo pipefail
+          mkdir -p site
+          cp appcast/appcast.xml site/appcast.xml
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+      - name: Deploy appcast
+        id: deployment
+        uses: actions/deploy-pages@v5

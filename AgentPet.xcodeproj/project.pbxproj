@@ -1,0 +1,286 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* AgentPetApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* AgentPetApp.swift */; };
+		A10000000000000000000002 /* CodexClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* CodexClient.swift */; };
+		A10000000000000000000003 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* SessionStore.swift */; };
+		A10000000000000000000004 /* HookIntegration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* HookIntegration.swift */; };
+		A10000000000000000000005 /* PetWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* PetWindow.swift */; };
+		A10000000000000000000006 /* PetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* PetView.swift */; };
+		A10000000000000000000007 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* DashboardView.swift */; };
+		A10000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* Assets.xcassets */; };
+		A10000000000000000000009 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* manifest.json */; };
+		A1000000000000000000000A /* fresh.png in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* fresh.png */; };
+		A1000000000000000000000C /* AgentPetTemplate-18.png in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000C /* AgentPetTemplate-18.png */; };
+		A1000000000000000000000D /* focused.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* focused.png */; };
+		A1000000000000000000000E /* tired.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* tired.png */; };
+		A1000000000000000000000F /* exhausted.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000012 /* exhausted.png */; };
+		A10000000000000000000010 /* empty.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* empty.png */; };
+		A10000000000000000000011 /* bars.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* bars.png */; };
+		A10000000000000000000012 /* fill_green.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000015 /* fill_green.png */; };
+		A10000000000000000000013 /* fill_amber.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000016 /* fill_amber.png */; };
+		A10000000000000000000014 /* fill_red.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000017 /* fill_red.png */; };
+		A10000000000000000000015 /* fill_empty.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000018 /* fill_empty.png */; };
+		A10000000000000000000016 /* digits.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000019 /* digits.png */; };
+		A10000000000000000000017 /* task_bubble.png in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001A /* task_bubble.png */; };
+		A10000000000000000000018 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000002 /* Sparkle */; };
+		A10000000000000000000019 /* AgentPetHook in Embed Helpers */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001C /* AgentPetHook */; settings = {ATTRIBUTES = (CodeSignOnCopy,); }; };
+		A1000000000000000000001A /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001B /* main.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A20000000000000000000001 /* AgentPetApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPetApp.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* CodexClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexClient.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* HookIntegration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookIntegration.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* PetWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetWindow.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* PetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetView.swift; sourceTree = "<group>"; };
+		A20000000000000000000007 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		A20000000000000000000008 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A20000000000000000000009 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = manifest.json; sourceTree = "<group>"; };
+		A2000000000000000000000A /* fresh.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = fresh.png; sourceTree = "<group>"; };
+		A2000000000000000000000C /* AgentPetTemplate-18.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AgentPetTemplate-18.png; sourceTree = "<group>"; };
+		A20000000000000000000010 /* focused.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = focused.png; sourceTree = "<group>"; };
+		A20000000000000000000011 /* tired.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = tired.png; sourceTree = "<group>"; };
+		A20000000000000000000012 /* exhausted.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = exhausted.png; sourceTree = "<group>"; };
+		A20000000000000000000013 /* empty.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = empty.png; sourceTree = "<group>"; };
+		A20000000000000000000014 /* bars.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = bars.png; sourceTree = "<group>"; };
+		A20000000000000000000015 /* fill_green.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = fill_green.png; sourceTree = "<group>"; };
+		A20000000000000000000016 /* fill_amber.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = fill_amber.png; sourceTree = "<group>"; };
+		A20000000000000000000017 /* fill_red.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = fill_red.png; sourceTree = "<group>"; };
+		A20000000000000000000018 /* fill_empty.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = fill_empty.png; sourceTree = "<group>"; };
+		A20000000000000000000019 /* digits.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = digits.png; sourceTree = "<group>"; };
+		A2000000000000000000001A /* task_bubble.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = task_bubble.png; sourceTree = "<group>"; };
+		A2000000000000000000000D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A2000000000000000000000E /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = SOURCE_ROOT; };
+		A2000000000000000000000F /* AgentPet.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AgentPet.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A2000000000000000000001B /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		A2000000000000000000001C /* AgentPetHook */ = {isa = PBXFileReference; explicitFileType = compiled.mach-o.executable; includeInIndex = 0; path = AgentPetHook; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A30000000000000000000001 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000018 /* Sparkle in Frameworks */,); runOnlyForDeploymentPostprocessing = 0; };
+		A30000000000000000000002 /* AgentPetHook Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A40000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A40000000000000000000002 /* AgentPet */,
+				A40000000000000000000005 /* AgentPetHook */,
+				A2000000000000000000000E /* README.md */,
+				A40000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A40000000000000000000002 /* AgentPet */ = {
+			isa = PBXGroup;
+			path = AgentPet;
+			sourceTree = "<group>";
+			children = (
+				A20000000000000000000001 /* AgentPetApp.swift */,
+				A20000000000000000000002 /* CodexClient.swift */,
+				A20000000000000000000003 /* SessionStore.swift */,
+				A20000000000000000000004 /* HookIntegration.swift */,
+				A20000000000000000000005 /* PetWindow.swift */,
+				A20000000000000000000006 /* PetView.swift */,
+				A20000000000000000000007 /* DashboardView.swift */,
+				A20000000000000000000008 /* Assets.xcassets */,
+				A40000000000000000000004 /* Resources */,
+				A2000000000000000000000D /* Info.plist */,
+			);
+		};
+		A40000000000000000000003 /* Products */ = {isa = PBXGroup; children = (A2000000000000000000000F /* AgentPet.app */, A2000000000000000000001C /* AgentPetHook */,); name = Products; sourceTree = "<group>"; };
+		A40000000000000000000005 /* AgentPetHook */ = {isa = PBXGroup; children = (A2000000000000000000001B /* main.swift */,); path = AgentPetHook; sourceTree = "<group>"; };
+		A40000000000000000000004 /* Resources */ = {
+			isa = PBXGroup;
+			path = Resources;
+			sourceTree = "<group>";
+			children = (
+				A20000000000000000000009 /* manifest.json */,
+				A2000000000000000000000C /* AgentPetTemplate-18.png */,
+				A2000000000000000000000A /* fresh.png */,
+				A20000000000000000000010 /* focused.png */,
+				A20000000000000000000011 /* tired.png */,
+				A20000000000000000000012 /* exhausted.png */,
+				A20000000000000000000013 /* empty.png */,
+				A20000000000000000000014 /* bars.png */,
+				A20000000000000000000015 /* fill_green.png */,
+				A20000000000000000000016 /* fill_amber.png */,
+				A20000000000000000000017 /* fill_red.png */,
+				A20000000000000000000018 /* fill_empty.png */,
+				A20000000000000000000019 /* digits.png */,
+				A2000000000000000000001A /* task_bubble.png */,
+			);
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A50000000000000000000001 /* AgentPet */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A60000000000000000000002 /* Build configuration list for PBXNativeTarget "AgentPet" */;
+			buildPhases = (
+				A70000000000000000000001 /* Sources */,
+				A30000000000000000000001 /* Frameworks */,
+				A70000000000000000000002 /* Resources */,
+				A70000000000000000000003 /* Embed Helpers */,
+			);
+			buildRules = ();
+			dependencies = (A70000000000000000000004 /* AgentPetHook dependency */,);
+			name = AgentPet;
+			packageProductDependencies = (B10000000000000000000002 /* Sparkle */,);
+			productName = AgentPet;
+			productReference = A2000000000000000000000F /* AgentPet.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A50000000000000000000002 /* AgentPetHook */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A60000000000000000000003 /* Build configuration list for PBXNativeTarget "AgentPetHook" */;
+			buildPhases = (A70000000000000000000005 /* Sources */, A30000000000000000000002 /* AgentPetHook Frameworks */,);
+			buildRules = ();
+			dependencies = ();
+			name = AgentPetHook;
+			productName = AgentPetHook;
+			productReference = A2000000000000000000001C /* AgentPetHook */;
+			productType = "com.apple.product-type.tool";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A80000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = { BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 2700; LastUpgradeCheck = 2700; TargetAttributes = { A50000000000000000000001 = { CreatedOnToolsVersion = 27.0; }; A50000000000000000000002 = { CreatedOnToolsVersion = 27.0; }; }; };
+			buildConfigurationList = A60000000000000000000001 /* Build configuration list for PBXProject "AgentPet" */;
+			compatibilityVersion = "Xcode 16.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base,);
+			mainGroup = A40000000000000000000001;
+			productRefGroup = A40000000000000000000003 /* Products */;
+			packageReferences = (B10000000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */,);
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (A50000000000000000000001 /* AgentPet */, A50000000000000000000002 /* AgentPetHook */,);
+		};
+/* End PBXProject section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A70000000000000000000003 /* Embed Helpers */ = {isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = Contents/Helpers; dstSubfolderSpec = 1; files = (A10000000000000000000019 /* AgentPetHook in Embed Helpers */,); name = "Embed Helpers"; runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXContainerItemProxy section */
+		A80000000000000000000002 /* PBXContainerItemProxy */ = {isa = PBXContainerItemProxy; containerPortal = A80000000000000000000001 /* Project object */; proxyType = 1; remoteGlobalIDString = A50000000000000000000002; remoteInfo = AgentPetHook; };
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		A70000000000000000000004 /* AgentPetHook dependency */ = {isa = PBXTargetDependency; target = A50000000000000000000002 /* AgentPetHook */; targetProxy = A80000000000000000000002 /* PBXContainerItemProxy */; };
+/* End PBXTargetDependency section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A70000000000000000000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000008 /* Assets.xcassets in Resources */,
+				A10000000000000000000009 /* manifest.json in Resources */,
+				A1000000000000000000000A /* fresh.png in Resources */,
+				A1000000000000000000000C /* AgentPetTemplate-18.png in Resources */,
+				A1000000000000000000000D /* focused.png in Resources */,
+				A1000000000000000000000E /* tired.png in Resources */,
+				A1000000000000000000000F /* exhausted.png in Resources */,
+				A10000000000000000000010 /* empty.png in Resources */,
+				A10000000000000000000011 /* bars.png in Resources */,
+				A10000000000000000000012 /* fill_green.png in Resources */,
+				A10000000000000000000013 /* fill_amber.png in Resources */,
+				A10000000000000000000014 /* fill_red.png in Resources */,
+				A10000000000000000000015 /* fill_empty.png in Resources */,
+				A10000000000000000000016 /* digits.png in Resources */,
+				A10000000000000000000017 /* task_bubble.png in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A70000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000001 /* AgentPetApp.swift in Sources */,
+				A10000000000000000000002 /* CodexClient.swift in Sources */,
+				A10000000000000000000003 /* SessionStore.swift in Sources */,
+				A10000000000000000000004 /* HookIntegration.swift in Sources */,
+				A10000000000000000000005 /* PetWindow.swift in Sources */,
+				A10000000000000000000006 /* PetView.swift in Sources */,
+				A10000000000000000000007 /* DashboardView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A70000000000000000000005 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A1000000000000000000001A /* main.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A90000000000000000000001 /* Debug project config */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; MACOSX_DEPLOYMENT_TARGET = 14.0; SDKROOT = macosx; SWIFT_VERSION = 6.0; }; name = Debug; };
+		A90000000000000000000002 /* Release project config */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; MACOSX_DEPLOYMENT_TARGET = 14.0; SDKROOT = macosx; SWIFT_VERSION = 6.0; }; name = Release; };
+		A90000000000000000000003 /* Debug target config */ = {isa = XCBuildConfiguration; buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGN_IDENTITY = "-";
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AgentPet/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.0;
+				CURRENT_PROJECT_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.agentpet.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SU_FEED_URL = "";
+				SU_PUBLIC_ED_KEY = "";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks");
+			}; name = Debug; };
+		A90000000000000000000004 /* Release target config */ = {isa = XCBuildConfiguration; buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGN_IDENTITY = "-";
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AgentPet/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.0;
+				CURRENT_PROJECT_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.agentpet.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SU_FEED_URL = "";
+				SU_PUBLIC_ED_KEY = "";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks");
+			}; name = Release; };
+		A90000000000000000000005 /* Debug AgentPetHook */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGNING_ALLOWED = YES; CODE_SIGN_IDENTITY = "-"; MACOSX_DEPLOYMENT_TARGET = 14.0; PRODUCT_BUNDLE_IDENTIFIER = com.agentpet.app.hook; PRODUCT_NAME = AgentPetHook; SKIP_INSTALL = YES; SWIFT_VERSION = 6.0; }; name = Debug; };
+		A90000000000000000000006 /* Release AgentPetHook */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGNING_ALLOWED = YES; CODE_SIGN_IDENTITY = "-"; MACOSX_DEPLOYMENT_TARGET = 14.0; PRODUCT_BUNDLE_IDENTIFIER = com.agentpet.app.hook; PRODUCT_NAME = AgentPetHook; SKIP_INSTALL = YES; SWIFT_VERSION = 6.0; }; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A60000000000000000000001 /* Build configuration list for PBXProject "AgentPet" */ = {isa = XCConfigurationList; buildConfigurations = (A90000000000000000000001 /* Debug project config */, A90000000000000000000002 /* Release project config */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A60000000000000000000002 /* Build configuration list for PBXNativeTarget "AgentPet" */ = {isa = XCConfigurationList; buildConfigurations = (A90000000000000000000003 /* Debug target config */, A90000000000000000000004 /* Release target config */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A60000000000000000000003 /* Build configuration list for PBXNativeTarget "AgentPetHook" */ = {isa = XCConfigurationList; buildConfigurations = (A90000000000000000000005 /* Debug AgentPetHook */, A90000000000000000000006 /* Release AgentPetHook */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B10000000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/sparkle-project/Sparkle"; requirement = {kind = upToNextMajorVersion; minimumVersion = 2.9.6; }; };
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B10000000000000000000002 /* Sparkle */ = {isa = XCSwiftPackageProductDependency; package = B10000000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */; productName = Sparkle; };
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = A80000000000000000000001 /* Project object */;
+}
