@@ -216,9 +216,8 @@ jobs:
             test "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$EXISTING_APP/Contents/Info.plist")" = "$SPARKLE_PUBLIC_ED_KEY"
             test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$EXISTING_APP/Contents/Info.plist")" = "$SU_FEED_URL"
             ditto "$EXISTING/AgentPet-${VERSION}.zip" "$ZIP"
-          else
-            ditto "$ZIP" "$UPDATE_DIR/AgentPet-${VERSION}.zip"
           fi
+          ditto "$ZIP" "$UPDATE_DIR/AgentPet-${VERSION}.zip"
           DOWNLOAD_URL_PREFIX="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/"
           printf '%s' "$SPARKLE_PRIVATE_KEY" | "$GENERATE_APPCAST" \
             --download-url-prefix "$DOWNLOAD_URL_PREFIX" \
@@ -228,7 +227,7 @@ jobs:
           ZIP_SIZE="$(stat -f%z "$ZIP")"
           test -s "$APPCAST"
           grep -Fq "${DOWNLOAD_URL_PREFIX}AgentPet-${VERSION}.zip" "$APPCAST"
-          grep -Fq "sparkle:version=\"${VERSION}\"" "$APPCAST"
+          grep -Fq "<sparkle:version>${VERSION}</sparkle:version>" "$APPCAST"
           grep -Fq "length=\"${ZIP_SIZE}\"" "$APPCAST"
           SIGNATURE_ATTRIBUTE="$(grep -oE 'sparkle:edSignature="[^"]+"' "$APPCAST" | head -n 1)"
           SIGNATURE="${SIGNATURE_ATTRIBUTE#sparkle:edSignature=\"}"
