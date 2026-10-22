@@ -244,41 +244,132 @@ private struct UsageSummaryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+
             HStack {
                 Text("Codex usage")
                     .font(.headline)
+
                 Spacer()
-                Text(snapshot.map { "Updated \($0.updatedAt.formatted(date: .omitted, time: .shortened))" } ?? "Unavailable")
+
+                Text(
+                    snapshot.map {
+                        "Updated \($0.updatedAt.formatted(date: .omitted, time: .shortened))"
+                    } ?? "Unavailable"
+                )
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            UsageSummaryRow(window: snapshot?.fiveHour)
-            UsageSummaryRow(window: snapshot?.sevenDay)
+
+            if let snapshot {
+
+                if let fiveHour = snapshot.fiveHour {
+                    UsageSummaryRow(window: fiveHour)
+                }
+
+                if let sevenDay = snapshot.sevenDay {
+                    UsageSummaryRow(window: sevenDay)
+                }
+
+                if let energyWindow = snapshot.energyWindow {
+                    Text(
+                        "Pet energy source: \(energyWindow.label)"
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                }
+
+                if snapshot.fiveHour == nil,
+                   snapshot.sevenDay != nil {
+
+                    Text(
+                        "5H unavailable — showing weekly quota only."
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                }
+
+                if snapshot.sevenDay == nil,
+                   snapshot.fiveHour != nil {
+
+                    Text(
+                        "7D unavailable — showing 5H quota only."
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                }
+
+                if snapshot.availableWindows.isEmpty {
+                    Text("Usage unavailable")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+            } else {
+
+                Text("Usage unavailable")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(13)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 13))
+        .background(
+            .quaternary,
+            in: RoundedRectangle(cornerRadius: 13)
+        )
     }
 }
 
 private struct UsageSummaryRow: View {
-    let window: UsageWindow?
+    let window: UsageWindow
 
     var body: some View {
         HStack(spacing: 9) {
-            Text(window?.label ?? "--")
-                .font(.system(size: 11, weight: .heavy, design: .rounded))
-                .frame(width: 32, alignment: .leading)
-            ProgressView(value: window?.remaining ?? 0, total: 100)
+
+            Text(window.label)
+                .font(
+                    .system(
+                        size: 11,
+                        weight: .heavy,
+                        design: .rounded
+                    )
+                )
+                .frame(
+                    width: 32,
+                    alignment: .leading
+                )
+
+            ProgressView(
+                value: window.remaining,
+                total: 100
+            )
                 .tint(color)
-            Text(window.map { "\(Int($0.remaining.rounded(.down)))%" } ?? "--")
-                .font(.system(.caption, design: .rounded).monospacedDigit().weight(.semibold))
-                .frame(width: 42, alignment: .trailing)
+
+            Text(
+                "\(Int(window.remaining.rounded(.down)))%"
+            )
+            .font(
+                .system(
+                    .caption,
+                    design: .rounded
+                )
+                .monospacedDigit()
+                .weight(.semibold)
+            )
+            .frame(
+                width: 42,
+                alignment: .trailing
+            )
         }
-        .help(window?.resetAt.map { "Resets \($0.formatted(date: .abbreviated, time: .shortened))" } ?? "Usage unavailable")
+        .help(
+            window.resetAt.map {
+                "Resets \($0.formatted(date: .abbreviated, time: .shortened))"
+            } ?? "Reset time unavailable"
+        )
     }
 
     private var color: Color {
-        guard let remaining = window?.remaining else { return .gray }
+        let remaining = window.remaining
+
         if remaining <= 18 { return Color(red: 0.92, green: 0.31, blue: 0.31) }
         if remaining <= 40 { return Color(red: 0.94, green: 0.66, blue: 0.22) }
         return Color(red: 0.31, green: 0.77, blue: 0.47)

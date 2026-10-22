@@ -337,6 +337,14 @@ struct UsageSnapshot {
     let fiveHour: UsageWindow?
     let sevenDay: UsageWindow?
     let updatedAt: Date
+
+    var availableWindows: [UsageWindow] {
+        [fiveHour, sevenDay].compactMap { $0 }
+    }
+
+    var energyWindow: UsageWindow? {
+        fiveHour ?? sevenDay
+    }
 }
 
 @MainActor

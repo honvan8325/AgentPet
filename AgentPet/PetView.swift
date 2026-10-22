@@ -620,7 +620,12 @@ struct PetView: View {
     }
 
     private var energyTier: EnergyTier? {
-        EnergyTier.choose(codex.usage?.fiveHour?.remaining, manifest: SpriteAssets.shared.manifest)
+        let remaining = codex.usage?.energyWindow?.remaining
+
+        return EnergyTier.choose(
+            remaining,
+            manifest: SpriteAssets.shared.manifest
+        )
     }
 
     private var visualContext: PetVisualContext {
@@ -750,35 +755,119 @@ private struct SpriteFrameView: View {
 private struct PixelHUDView: View {
     let snapshot: UsageSnapshot?
     let scale: CGFloat
+
     private let assets = SpriteAssets.shared
+
+    private var accessibilityDescription: String {
+        let windows = snapshot?.availableWindows ?? []
+
+        guard !windows.isEmpty else {
+            return "Codex usage unavailable"
+        }
+
+        return "Codex usage: " + windows
+            .map { "\($0.label) \(value($0))" }
+            .joined(separator: ", ")
+    }
 
     var body: some View {
         let hud = assets.manifest?.hud
-        let width = CGFloat(hud?.size.first ?? 36)
-        let height = CGFloat(hud?.size.dropFirst().first ?? 14)
+
+        let width = CGFloat(
+            hud?.size.first ?? 36
+        )
+
+        let height = CGFloat(
+            hud?.size.dropFirst().first ?? 14
+        )
+
+        let hasTwoWindows =
+            snapshot?.fiveHour != nil &&
+            snapshot?.sevenDay != nil
+
+        let activeWindow = snapshot?.energyWindow
+
+        let inset = hud?.fillInsets ?? [1, 1]
+        let fillSize = hud?.fillSize ?? [30, 2]
+
+        let firstPosition = hud?.positions["5H_bar"]
+
+        let singleBarHeight = firstPosition.flatMap {
+            position -> Int? in
+
+            guard position.count == 4 else {
+                return nil
+            }
+
+            return position[1] + position[3] + 1
+        } ?? 6
+
+        let visibleBackgroundHeight = hasTwoWindows
+            ? height
+            : CGFloat(
+                min(
+                    Int(height),
+                    max(1, singleBarHeight)
+                )
+            )
+
         ZStack(alignment: .topLeading) {
-            if let image = assets.hudImage("bars") {
+
+            // Draw only when quota data exists.
+            if activeWindow != nil,
+               let image = assets.hudImage("bars") {
+
                 Image(nsImage: image)
                     .interpolation(.none)
                     .resizable()
-                    .frame(width: width * scale, height: height * scale)
+                    .frame(
+                        width: width * scale,
+                        height: height * scale
+                    )
+                    .frame(
+                        width: width * scale,
+                        height: visibleBackgroundHeight * scale,
+                        alignment: .top
+                    )
+                    .clipped()
             }
-            bar(
-                window: snapshot?.fiveHour,
-                position: hud?.positions["5H_bar"],
-                inset: hud?.fillInsets ?? [1, 1],
-                fillSize: hud?.fillSize ?? [30, 2]
-            )
-            bar(
-                window: snapshot?.sevenDay,
-                position: hud?.positions["7D_bar"],
-                inset: hud?.fillInsets ?? [1, 1],
-                fillSize: hud?.fillSize ?? [30, 2]
-            )
+
+            if hasTwoWindows {
+
+                // Normal dual-window mode.
+                bar(
+                    window: snapshot?.fiveHour,
+                    position: hud?.positions["5H_bar"],
+                    inset: inset,
+                    fillSize: fillSize
+                )
+
+                bar(
+                    window: snapshot?.sevenDay,
+                    position: hud?.positions["7D_bar"],
+                    inset: inset,
+                    fillSize: fillSize
+                )
+
+            } else if let activeWindow {
+
+                // Single-window mode.
+                // Render either 5H or 7D in the first slot.
+                bar(
+                    window: activeWindow,
+                    position: hud?.positions["5H_bar"],
+                    inset: inset,
+                    fillSize: fillSize
+                )
+            }
         }
-        .frame(width: width * scale, height: height * scale)
+        .frame(
+            width: width * scale,
+            height: height * scale
+        )
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Codex usage: 5 hour \(value(snapshot?.fiveHour)), 7 day \(value(snapshot?.sevenDay))")
+        .accessibilityLabel(accessibilityDescription)
+        .help(accessibilityDescription)
     }
 
     @ViewBuilder
@@ -788,18 +877,39 @@ private struct PixelHUDView: View {
         inset: [Int],
         fillSize: [Int]
     ) -> some View {
+
         if let position,
            position.count == 4,
            inset.count == 2,
            fillSize.count == 2 {
+
             let barWidth = fillSize[0]
             let barHeight = fillSize[1]
-            let x = CGFloat(position[0] + inset[0]) * scale
-            let y = CGFloat(position[1] + inset[1]) * scale
+
+            let x = CGFloat(
+                position[0] + inset[0]
+            ) * scale
+
+            let y = CGFloat(
+                position[1] + inset[1]
+            ) * scale
+
             let remaining = window?.remaining
             let valid = remaining?.isFinite == true
-            let percent = valid ? min(100, max(0, remaining ?? 0)) : 0
-            let filled = valid ? Int((Double(barWidth) * percent / 100).rounded(.down)) : 0
+
+            let percent = valid
+                ? min(100, max(0, remaining ?? 0))
+                : 0
+
+            let filled = valid
+                ? Int(
+                    (
+                        Double(barWidth) *
+                        percent / 100
+                    ).rounded(.down)
+                )
+                : 0
+
             let fillName = !valid
                 ? "fill_empty"
                 : percent <= 18
@@ -808,26 +918,54 @@ private struct PixelHUDView: View {
                         ? "fill_amber"
                         : "fill_green"
 
-            if let background = assets.fillImage("fill_empty", width: barWidth) {
+            if let background = assets.fillImage(
+                "fill_empty",
+                width: barWidth
+            ) {
+
                 Image(nsImage: background)
                     .interpolation(.none)
                     .resizable()
-                    .frame(width: CGFloat(barWidth) * scale, height: CGFloat(barHeight) * scale)
-                    .offset(x: x, y: y)
+                    .frame(
+                        width: CGFloat(barWidth) * scale,
+                        height: CGFloat(barHeight) * scale
+                    )
+                    .offset(
+                        x: x,
+                        y: y
+                    )
             }
 
-            if filled > 0, let foreground = assets.fillImage(fillName, width: filled) {
+            if filled > 0,
+               let foreground = assets.fillImage(
+                   fillName,
+                   width: filled
+               ) {
+
                 Image(nsImage: foreground)
                     .interpolation(.none)
                     .resizable()
-                    .frame(width: CGFloat(filled) * scale, height: CGFloat(barHeight) * scale)
-                    .offset(x: x, y: y)
+                    .frame(
+                        width: CGFloat(filled) * scale,
+                        height: CGFloat(barHeight) * scale
+                    )
+                    .offset(
+                        x: x,
+                        y: y
+                    )
             }
         }
     }
 
-    private func value(_ window: UsageWindow?) -> String {
-        guard let remaining = window?.remaining, remaining.isFinite else { return "unavailable" }
+    private func value(
+        _ window: UsageWindow?
+    ) -> String {
+
+        guard let remaining = window?.remaining,
+              remaining.isFinite else {
+            return "unavailable"
+        }
+
         return "\(Int(min(100, max(0, remaining)))) percent remaining"
     }
 }
