@@ -61,10 +61,6 @@ final class AnimationPlayer: ObservableObject {
         return frames[frameIndex(frames: frames, elapsed: date.timeIntervalSince(playback.startedAt), looping: clip.kind == "loop")]
     }
 
-    func frameDelay(for clip: AssetClip, at date: Date) -> TimeInterval {
-        frame(for: clip, at: date)?.durationSeconds ?? 0.18
-    }
-
     func frameIndex(frames: [AssetFrame], elapsed: TimeInterval, looping: Bool) -> Int {
         guard !frames.isEmpty else { return 0 }
         let durations = frames.map { max(1, $0.durationMs) }

@@ -15,7 +15,7 @@ final class PetPanelController: NSObject, NSWindowDelegate {
             includesHUD: model.showUsageHUD && !(model.codex.usage?.availableWindows.isEmpty ?? true),
             hudWindowCount: model.codex.usage?.availableWindows.count ?? 0,
             bubbleSize: SpriteAtlasStore.shared.bubblePixelSize,
-            zoom: CGFloat(model.petSize.pixelScale)
+            zoom: CGFloat(model.petScale)
         )
         panel = NSPanel(
             contentRect: CGRect(x: 0, y: 0, width: metrics.width * metrics.zoom, height: metrics.height * metrics.zoom),
@@ -70,7 +70,7 @@ final class PetPanelController: NSObject, NSWindowDelegate {
         panel.setFrame(
             CGRect(x: old.minX, y: old.maxY - size.height, width: size.width, height: size.height),
             display: true,
-            animate: true
+            animate: !model.reduceMotion
         )
         clampAndSave()
     }
@@ -128,7 +128,7 @@ final class PetPanelController: NSObject, NSWindowDelegate {
             includesHUD: hasVisibleHUD,
             hudWindowCount: model.codex.usage?.availableWindows.count ?? 0,
             bubbleSize: SpriteAtlasStore.shared.bubblePixelSize,
-            zoom: CGFloat(model.petSize.pixelScale)
+            zoom: CGFloat(model.petScale)
         )
     }
 
@@ -153,7 +153,7 @@ final class DashboardWindowController {
     init(model: AgentPetModel) {
         self.model = model
         window = NSWindow(
-            contentRect: CGRect(x: 0, y: 0, width: 500, height: 720),
+            contentRect: CGRect(origin: .zero, size: DashboardView.contentSize),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false

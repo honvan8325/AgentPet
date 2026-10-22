@@ -56,9 +56,19 @@
       "cooldownSeconds": 165
     },
     {
-      "clip": "idle.sleep",
-      "weight": 1.4,
-      "cooldownSeconds": 177
+      "clip": "react.small_hop",
+      "weight": 0.6,
+      "cooldownSeconds": 180
+    },
+    {
+      "clip": "react.tiny_dance",
+      "weight": 0.35,
+      "cooldownSeconds": 240
+    },
+    {
+      "clip": "interact.wave",
+      "weight": 0.4,
+      "cooldownSeconds": 210
     }
   ],
   "avoidImmediateRepeat": true,

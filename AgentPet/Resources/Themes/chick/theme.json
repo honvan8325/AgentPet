@@ -1,7 +1,0 @@
-{
-  "id": "chick",
-  "name": "Chick",
-  "manifest": "manifest.json",
-  "bubble": "task_bubble.png",
-  "hud": "bars.png"
-}

@@ -14,9 +14,7 @@ struct AssetVariant: Decodable {
 
 struct AssetClip: Decodable {
     let kind: String
-    let category: String
     let interruptPolicy: String
-    let framesPerVariant: Int
     let variants: [String: AssetVariant]
     let fallback: String?
     let from: String?
@@ -71,18 +69,14 @@ struct PetBehaviorConfiguration: Decodable {
 
 struct AssetManifest: Decodable {
     struct Canvas: Decodable {
-        let sourceWidth: Int
-        let sourceHeight: Int
         let outputWidth: Int
         let outputHeight: Int
         let scale: Int
         let feetAnchor: [Int]
-        let interpolation: String
     }
 
     struct HUD: Decodable {
         struct Layout: Decodable {
-            let anchor: String
             let offsetY: Int
         }
 
@@ -90,10 +84,6 @@ struct AssetManifest: Decodable {
         let bubbleFile: String
         let size: [Int]
         let barPositions: [String: [Int]]
-        let showLabels: Bool
-        let showPercent: Bool
-        let outerPanel: Bool
-        let showBubbleOnlyWhenRunningCountPositive: Bool
         let layout: Layout
         let singleWindowUsesTopSlot: Bool
     }
@@ -101,16 +91,12 @@ struct AssetManifest: Decodable {
     struct Effect: Decodable {
         let path: String
         let frames: Int
-        let sourceSize: [Int]
         let outputSize: [Int]
     }
 
     let schemaVersion: Int
     let themeId: String
-    let displayName: String
     let canvas: Canvas
-    let energyProfiles: [String]
-    let moodProfiles: [String]
     let atlases: [AssetAtlas]
     let clips: [String: AssetClip]
     let roles: [String: String]
@@ -119,40 +105,12 @@ struct AssetManifest: Decodable {
 
     func validate() throws {
         guard schemaVersion == 3, !themeId.isEmpty,
-              canvas.sourceWidth > 0, canvas.sourceHeight > 0,
               canvas.outputWidth > 0, canvas.outputHeight > 0, canvas.scale > 0,
-              Set(energyProfiles) == Set(PetEnergy.allCases.map(\.rawValue)),
-              Set(moodProfiles) == Set(PetMood.allCases.map(\.rawValue)),
-              let idle = roles["idle"], clips[idle] != nil else {
-            throw AssetManifestError.invalid("The V3 manifest is missing required theme, canvas, profile, or idle role data.")
-        }
-
-        var atlasByID: [String: AssetAtlas] = [:]
-        for atlas in atlases {
-            guard atlas.width > 0, atlas.height > 0,
-                  atlasByID.updateValue(atlas, forKey: atlas.id) == nil else {
-                throw AssetManifestError.invalid("The V3 manifest contains an invalid or duplicate atlas.")
-            }
-        }
-
-        for clip in clips.values {
-            guard clip.framesPerVariant > 0 else {
-                throw AssetManifestError.invalid("The V3 manifest contains a clip without frames.")
-            }
-            for variant in clip.variants.values {
-                for frame in variant.frames {
-                    guard frame.durationMs > 0, frame.rect.count == 4,
-                          let atlas = atlasByID[frame.atlas] else {
-                        throw AssetManifestError.invalid("The V3 manifest contains an invalid frame reference.")
-                    }
-                    let x = frame.rect[0], y = frame.rect[1]
-                    let width = frame.rect[2], height = frame.rect[3]
-                    guard x >= 0, y >= 0, width > 0, height > 0,
-                          x + width <= atlas.width, y + height <= atlas.height else {
-                        throw AssetManifestError.invalid("The V3 manifest contains a frame outside its atlas bounds.")
-                    }
-                }
-            }
+              let idle = roles["idle"], clips[idle] != nil,
+              !atlases.isEmpty,
+              Set(atlases.map(\.id)).count == atlases.count,
+              atlases.allSatisfy({ !$0.id.isEmpty && !$0.file.isEmpty && $0.width > 0 && $0.height > 0 }) else {
+            throw AssetManifestError.invalid("The V3 manifest is missing required theme, canvas, idle role, or atlas data.")
         }
     }
 

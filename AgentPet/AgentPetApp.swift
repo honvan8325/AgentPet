@@ -5,7 +5,7 @@ import Sparkle
 import SwiftUI
 
 enum PetSize: String, CaseIterable, Identifiable, Hashable {
-    case small, medium, large
+    case small, medium, large, custom
 
     var id: String { rawValue }
 
@@ -13,16 +13,19 @@ enum PetSize: String, CaseIterable, Identifiable, Hashable {
         rawValue.capitalized
     }
 
-    var pixelScale: Double {
+    var pixelScale: Double? {
         switch self {
         case .small:
             return 1.25
 
         case .medium:
-            return 1.75
+            return 1.5
 
         case .large:
-            return 2.5
+            return 2.0
+
+        case .custom:
+            return nil
         }
     }
 }
@@ -82,6 +85,12 @@ final class AgentPetModel: ObservableObject {
             onPetSizeChange?()
         }
     }
+    @Published var customPetScale = AgentPetModel.preference("customPetScale", default: 1.5) {
+        didSet {
+            UserDefaults.standard.set(customPetScale, forKey: "customPetScale")
+            onPetSizeChange?()
+        }
+    }
     @Published var showUsageHUD = AgentPetModel.preference("showUsageHUD", default: true) {
         didSet {
             UserDefaults.standard.set(showUsageHUD, forKey: "showUsageHUD")
@@ -114,6 +123,13 @@ final class AgentPetModel: ObservableObject {
     var onHidePet: (() -> Void)?
     var onPetDragEnd: (() -> Void)?
     var onPetWillTerminate: (() -> Void)?
+
+    var petScale: Double { petSize.pixelScale ?? customPetScale }
+
+    var petSizeTitle: String {
+        guard petSize == .custom else { return petSize.title }
+        return "Custom · \(customPetScale.formatted(.number.precision(.fractionLength(1))))×"
+    }
 
     private var connectionTask: Task<Void, Never>?
     private var reconnectTask: Task<Void, Never>?
@@ -354,6 +370,11 @@ final class AgentPetModel: ObservableObject {
     private static func preference(_ key: String, default value: Bool) -> Bool {
         guard UserDefaults.standard.object(forKey: key) != nil else { return value }
         return UserDefaults.standard.bool(forKey: key)
+    }
+
+    private static func preference(_ key: String, default value: Double) -> Double {
+        guard UserDefaults.standard.object(forKey: key) != nil else { return value }
+        return UserDefaults.standard.double(forKey: key)
     }
 }
 

@@ -2,6 +2,8 @@ import AppKit
 import SwiftUI
 
 struct DashboardView: View {
+    static let contentSize = CGSize(width: 500, height: 680)
+
     @ObservedObject var model: AgentPetModel
     @ObservedObject private var sessions: SessionStore
     @ObservedObject private var codex: CodexClient
@@ -15,8 +17,12 @@ struct DashboardView: View {
         _hooks = ObservedObject(wrappedValue: model.hooks)
     }
 
-    private var activeTasks: [DashboardTask] {
-        model.sessions.dashboardTasks.filter { $0.status == .running || $0.status == .needsInput }
+    private var runningTasks: [DashboardTask] {
+        model.sessions.dashboardTasks.filter { $0.status == .running }
+    }
+
+    private var permissionRequestsObserved: [DashboardTask] {
+        model.sessions.dashboardTasks.filter { $0.status == .needsInput }
     }
 
     private var recentTasks: [DashboardTask] {
@@ -54,22 +60,34 @@ struct DashboardView: View {
                 }
 
                 Section {
-                    LabeledContent("Active", value: "\(activeTasks.count)")
-                    if activeTasks.isEmpty {
+                    LabeledContent("Running", value: "\(runningTasks.count)")
+                    if runningTasks.isEmpty {
                         Label("No active tasks", systemImage: "checkmark.circle")
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(activeTasks) { task in
+                        ForEach(runningTasks) { task in
                             Button { model.openThread(task.threadID) } label: { TaskRow(task: task) }
                                 .buttonStyle(.plain)
                                 .disabled(task.threadID == nil)
                         }
                     }
-                    Text("Active status uses live events; permission requests are observations.")
+                    Divider()
+                    LabeledContent("Permission requests observed", value: "\(permissionRequestsObserved.count)")
+                    if permissionRequestsObserved.isEmpty {
+                        Text("No permission request events observed")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(permissionRequestsObserved) { task in
+                            Button { model.openThread(task.threadID) } label: { TaskRow(task: task) }
+                                .buttonStyle(.plain)
+                                .disabled(task.threadID == nil)
+                        }
+                    }
+                    Text("Permission events are observations and may no longer be pending.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Divider()
-                    LabeledContent("Recent", value: "\(recentTasks.count)")
+                    LabeledContent("Recent / historical", value: "\(recentTasks.count)")
                     if recentTasks.isEmpty {
                         Text("No recent threads")
                             .foregroundStyle(.secondary)
@@ -88,7 +106,7 @@ struct DashboardView: View {
                     LabeledContent("Hook", value: hooks.state.title)
                     LabeledContent(
                         "Tracking",
-                        value: "\(sessions.runningCount) running · \(sessions.needsInputCount) permission events"
+                        value: "\(sessions.runningCount) running · \(sessions.needsInputCount) permission requests observed"
                     )
                     HStack {
                         Button("Reconnect Codex") { model.reconnectCodex() }
@@ -104,7 +122,7 @@ struct DashboardView: View {
                 }
 
                 Section("Settings") {
-                    LabeledContent("Mascot", value: "\(model.selectedTheme.title) · \(model.petSize.title)")
+                    LabeledContent("Mascot", value: "\(model.selectedTheme.title) · \(model.petSizeTitle)")
                     LabeledContent("Notifications", value: model.notificationManager.isEnabled ? "On" : "Off")
                     if model.notificationManager.authorizationDenied {
                         Label("Allow alerts in System Settings to receive notifications.", systemImage: "exclamationmark.triangle")
@@ -138,7 +156,7 @@ struct DashboardView: View {
             }
             .formStyle(.grouped)
         }
-        .frame(width: 500, height: 680)
+        .frame(width: Self.contentSize.width, height: Self.contentSize.height)
         .background(Color(nsColor: .windowBackgroundColor))
         .preferredColorScheme(model.appearance.colorScheme)
     }
@@ -169,6 +187,17 @@ struct SettingsView: View {
                 }
                 Picker("Pet size", selection: $model.petSize) {
                     ForEach(PetSize.allCases) { Text($0.title).tag($0) }
+                }
+                if model.petSize == .custom {
+                    LabeledContent("Custom scale") {
+                        HStack(spacing: 10) {
+                            Slider(value: $model.customPetScale, in: 1.0...3.0, step: 0.1)
+                                .accessibilityLabel("Custom pet scale")
+                            Text("\(model.customPetScale.formatted(.number.precision(.fractionLength(1))))×")
+                                .monospacedDigit()
+                                .frame(width: 38, alignment: .trailing)
+                        }
+                    }
                 }
                 Toggle("Show usage HUD", isOn: $model.showUsageHUD)
                 Toggle("Always on top", isOn: $model.alwaysOnTop)

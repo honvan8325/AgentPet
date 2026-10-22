@@ -17,7 +17,6 @@ final class SpriteAtlasStore: ObservableObject {
     private var atlasesByID: [String: AssetAtlas] = [:]
     private var atlasImages: [String: CGImage] = [:]
     private var leastRecentlyUsed: [String] = []
-    private var currentAtlasID: String?
     private var lastFrameKey: String?
     private var lastFrameImage: NSImage?
     private var singleBarImageCache: [Bool: NSImage] = [:]
@@ -63,8 +62,14 @@ final class SpriteAtlasStore: ObservableObject {
     func image(for frame: AssetFrame) -> NSImage? {
         let frameKey = "\(frame.atlas):\(frame.rect)"
         if frameKey == lastFrameKey, let lastFrameImage { return lastFrameImage }
-        guard let atlas = atlasImage(frame.atlas), frame.rect.count == 4 else { return nil }
-        let rect = CGRect(x: frame.rect[0], y: frame.rect[1], width: frame.rect[2], height: frame.rect[3])
+        guard frame.rect.count == 4,
+              let atlas = atlasImage(frame.atlas) else { return nil }
+        let x = frame.rect[0], y = frame.rect[1]
+        let width = frame.rect[2], height = frame.rect[3]
+        guard x >= 0, y >= 0, width > 0, height > 0,
+              x <= atlas.width, y <= atlas.height,
+              width <= atlas.width - x, height <= atlas.height - y else { return nil }
+        let rect = CGRect(x: x, y: y, width: width, height: height)
         guard let cropped = atlas.cropping(to: rect) else { return nil }
         let image = NSImage(cgImage: cropped, size: NSSize(width: cropped.width, height: cropped.height))
         lastFrameKey = frameKey
@@ -120,7 +125,6 @@ final class SpriteAtlasStore: ObservableObject {
     func purgeAtlasCache() {
         atlasImages.removeAll(keepingCapacity: true)
         leastRecentlyUsed.removeAll(keepingCapacity: true)
-        currentAtlasID = nil
         lastFrameKey = nil
         lastFrameImage = nil
     }
@@ -131,7 +135,6 @@ final class SpriteAtlasStore: ObservableObject {
 
     private func atlasImage(_ id: String) -> CGImage? {
         guard let metadata = atlasesByID[id] else { return nil }
-        currentAtlasID = id
         if let cached = atlasImages[id] {
             leastRecentlyUsed.removeAll { $0 == id }
             leastRecentlyUsed.append(id)
@@ -146,9 +149,8 @@ final class SpriteAtlasStore: ObservableObject {
         }
         atlasImages[id] = image
         leastRecentlyUsed.append(id)
-        while atlasImages.count > 8 {
-            guard let victim = leastRecentlyUsed.first(where: { $0 != currentAtlasID }) else { break }
-            leastRecentlyUsed.removeAll { $0 == victim }
+        while leastRecentlyUsed.count > 8 {
+            let victim = leastRecentlyUsed.removeFirst()
             atlasImages.removeValue(forKey: victim)
         }
         return image

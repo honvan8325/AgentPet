@@ -3,8 +3,7 @@
 xcuserdata/
 DerivedData/
 .build/
+build/
 dist/
 *.dmg
 *.xcarchive
-
-assets/chick/staging/

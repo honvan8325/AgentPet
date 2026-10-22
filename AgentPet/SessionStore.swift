@@ -100,6 +100,7 @@ final class SessionStore: ObservableObject {
     private var ambiguousStarts = Set<TurnKey>()
     private var ambiguousStartOrder: [TurnKey] = []
     private var ambiguousSessions = Set<String>()
+    private var uncertainSessionIDs = Set<String>()
 
     var runningCount: Int {
         sessions.values.filter { $0.status == .running }.count
@@ -144,6 +145,7 @@ final class SessionStore: ObservableObject {
             session.status = .unknown
             session.updatedAt = Date()
             sessions[id] = session
+            uncertainSessionIDs.insert(id)
             changed = true
         }
         if changed {
@@ -199,9 +201,11 @@ final class SessionStore: ObservableObject {
                 status: .running,
                 updatedAt: date
             )
+            uncertainSessionIDs.remove(sessionID)
 
         case "PermissionRequest":
             guard !terminalTurns.contains(key), !permissionTurns.contains(key) else { return false }
+            guard !uncertainSessionIDs.contains(sessionID) else { return false }
             remember(key, in: &permissionTurns, order: &permissionOrder)
             if let current, current.turnID != turnID {
                 guard current.status == .running || current.status == .needsInput else { return false }
@@ -250,6 +254,7 @@ final class SessionStore: ObservableObject {
                 status: next,
                 updatedAt: date
             )
+            uncertainSessionIDs.remove(sessionID)
 
         default:
             return false
@@ -284,6 +289,7 @@ final class SessionStore: ObservableObject {
                   $0.sessionID == sessionID && !terminalTurns.contains($0)
               }) else { return }
         ambiguousSessions.remove(sessionID)
+        uncertainSessionIDs.remove(sessionID)
     }
 
     private func pruneHistory() {
@@ -293,6 +299,7 @@ final class SessionStore: ObservableObject {
         for session in inactive.dropFirst(50) {
             sessions.removeValue(forKey: session.sessionID)
             ambiguousSessions.remove(session.sessionID)
+            uncertainSessionIDs.remove(session.sessionID)
         }
     }
 
@@ -308,6 +315,7 @@ final class SessionStore: ObservableObject {
         if isReconnecting { return .reconnecting }
         if isConnecting { return .syncing }
         if !isConnected { return .disconnected }
+        if !uncertainSessionIDs.isEmpty { return .unknown }
         return .idle
     }
 

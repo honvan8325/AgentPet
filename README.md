@@ -4,12 +4,12 @@ AgentPet is a native macOS menu bar companion for Codex. Its animated Chick sits
 
 ## Features
 
-- Displays 5-hour and 7-day Codex usage independently. When only weekly usage is available, the pet uses 7-day usage for its energy state and shows the weekly HUD bar.
-- Shows a task bubble only while AgentPet has observed a running Codex session.
-- Animates across energy states, moods, work, idle behavior, and user interactions.
-- Includes a Dashboard for usage, active and recent threads, integration status, and diagnostics.
+- Displays available 5-hour and 7-day Codex usage windows. The 5-hour window drives the pet's energy when available; the 7-day window is used when it is the only quota provided.
+- Shows the task bubble only when a Codex session is confirmed as running from live lifecycle events.
+- Animates energy states, moods, work, idle behavior, and user interactions.
+- Includes a Dashboard for quota, running sessions, observed permission requests, recent threads, integration status, and diagnostics.
 - Offers optional notifications for turn events, observed permission requests, and low quota.
-- Preserves screen position and supports configurable pet size, HUD visibility, appearance, motion, and desktop behavior.
+- Preserves screen position and supports configurable size, HUD visibility, appearance, motion, and desktop behavior.
 
 ## Requirements
 
@@ -29,21 +29,21 @@ AgentPet remains available when Codex is disconnected. Releases are ad hoc signe
 
 ## Usage and task status
 
-The Dashboard shows available quota windows, reset times when provided, the Codex connection, active tasks, recent threads, hook status, and diagnostics. Use **Reconnect Codex** to restart the App Server connection or **Retry Live Tracking** to resume reading hook events without rewriting the hooks configuration.
+The Dashboard shows available quota windows and reset times, the Codex connection, confirmed running sessions, observed permission requests, recent threads, hook status, and diagnostics. Use **Reconnect Codex** to restart the App Server connection or **Retry Live Tracking** to resume reading hook events without rewriting the hooks configuration.
 
-Live task status comes from lifecycle events, not from thread history. Tasks that were already running before tracking started may be shown as Unknown. A `Stop` event means a turn ended; it does not indicate whether the turn succeeded. A permission request is an observation and may no longer be pending. The task bubble is hidden when no sessions are confirmed Running.
+Live task status comes from lifecycle events, not thread history. Tasks that were already running before tracking started may be shown as Unknown. A `Stop` event means a turn ended; it does not indicate whether the turn succeeded. Permission requests are shown as observed events and may no longer be pending. The task bubble is hidden when no sessions are confirmed as running.
 
-The pet's energy uses the 5-hour usage window when available, falling back to the 7-day window. Missing quota is treated as unavailable, not as zero remaining. The HUD shows only available usage windows.
+Missing quota is treated as unavailable, not as zero remaining. The HUD shows only usage windows provided by Codex.
 
 ## Settings
 
-Settings lets you choose the mascot and size, show or hide the usage HUD, keep the pet on top or within the visible screen area, reduce motion, pause the pet's animation, select an appearance, configure notifications, launch at login, and manage Codex integration and Sparkle updates. Pet sizes are Small (1.25×), Medium (1.75×), and Large (2.5×). Pausing AgentPet does not pause Codex tasks.
+Settings lets you choose the mascot and size, show or hide the usage HUD, keep the pet on top or within the visible screen area, reduce motion, pause animation, select an appearance, configure notifications, launch at login, and manage Codex integration and Sparkle updates. Pet sizes are Small (1.25×), Medium (1.5×), Large (2.0×), or Custom (1.0×–3.0× in 0.1× steps). Pausing AgentPet does not pause Codex tasks.
 
-Only the Chick mascot is currently bundled. Right-click the pet to open the Dashboard or Settings; clicking the pet plays a reaction.
+Only the Chick mascot is currently bundled. Drag the pet to move it. Right-click to open the Dashboard or Settings; clicking the pet plays a reaction.
 
 ## Asset system
 
-Chick uses Asset System V3: 88 animation clips, 30 energy and mood variants per clip, individually timed frames, and 308 atlas pages. Each source frame is 64×64 pixels and is rendered at 128×128 with nearest-neighbor scaling. Atlas pages are decoded on demand, with at most eight pages held in memory.
+Chick uses Asset System V3: 88 animation clips, 5 energy profiles, 6 moods, 2,640 animation variants, 19,680 individually timed frames, and 308 atlas pages. Each source frame is 64×64 pixels and is rendered at 128×128 with nearest-neighbor scaling. Atlas pages are decoded on demand, with at most eight pages held in memory.
 
 The app discovers compatible themes from V3 manifests under `AgentPet/Resources/Themes/`. Chick is the only theme currently included. Runtime assets are kept in `AgentPet/Resources/Themes/chick/`; editable source animation frames and asset-generation tools are not included in this repository or the app bundle.
 

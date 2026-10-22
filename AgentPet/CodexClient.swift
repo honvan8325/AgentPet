@@ -447,9 +447,7 @@ final class CodexClient: ObservableObject {
         } catch {
             guard generation == connectionGeneration else { return }
             guard revision == usageRevision else { return }
-            setUsage(nil)
-            errorMessage = error.localizedDescription
-            handleRequestError(error)
+            handleRequestError(error, clearUsage: true)
         }
     }
 
@@ -576,25 +574,30 @@ final class CodexClient: ObservableObject {
         errorMessage = error.localizedDescription
     }
 
-    private func handleRequestError(_ error: Error) {
+    private func handleRequestError(_ error: Error, clearUsage: Bool = false) {
         errorMessage = error.localizedDescription
-        guard let transportError = error as? RPCTransportError else { return }
+        var shouldClearUsage = clearUsage
+        guard let transportError = error as? RPCTransportError else {
+            if shouldClearUsage { setUsage(nil) }
+            return
+        }
         switch transportError {
         case .timeout:
             consecutiveTimeouts += 1
             if consecutiveTimeouts >= 2 {
-                setUsage(nil)
+                shouldClearUsage = true
                 connectionState = .reconnecting
                 usageAvailability = .loading
             }
         case .closed, .invalidJSON, .write:
             consecutiveTimeouts = 0
-            setUsage(nil)
+            shouldClearUsage = true
             connectionState = .reconnecting
             usageAvailability = .loading
         case .unavailable, .server:
             consecutiveTimeouts = 0
         }
+        if shouldClearUsage { setUsage(nil) }
     }
 
     private func merge(_ additions: [CodexThread], preserving extraIDs: Set<String> = []) {

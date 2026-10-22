@@ -36,9 +36,7 @@ struct PetView: View {
         }
         let mood: PetMood
         switch activity {
-        case .thinking: mood = .curious
         case .waiting, .disconnected, .reconnecting, .unknown: mood = .worried
-        case .sleeping: mood = .sleepy
         default: mood = isHovering ? .curious : (sessions.runningCount > 0 ? .happy : .neutral)
         }
         return PetBehaviorContext(
@@ -46,12 +44,14 @@ struct PetView: View {
             energy: PetEnergy.select(remaining: codex.usage?.energyWindow?.remaining) ?? .focused,
             mood: mood,
             runningCount: sessions.runningCount,
-            needsInputCount: sessions.needsInputCount,
             isHovering: isHovering,
             isDragging: isDragging,
             isPaused: model.isPetPaused,
             reduceMotion: model.reduceMotion,
-            themeID: model.selectedTheme.id
+            themeID: model.selectedTheme.id,
+            eventRevision: sessions.lastChange?.revision ?? 0,
+            lifecycleEvent: sessions.lastChange?.event,
+            lifecycleTransition: sessions.lastChange?.transition
         )
     }
 
@@ -62,7 +62,7 @@ struct PetView: View {
             includesHUD: hasVisibleHUD,
             hudWindowCount: codex.usage?.availableWindows.count ?? 0,
             bubbleSize: assets.bubblePixelSize,
-            zoom: CGFloat(model.petSize.pixelScale)
+            zoom: CGFloat(model.petScale)
         )
     }
 
@@ -73,10 +73,14 @@ struct PetView: View {
     var body: some View {
         let scene = metrics
         ZStack(alignment: .topLeading) {
-            TimelineView(.animation(
-                minimumInterval: engine.frameInterval,
-                paused: model.reduceMotion && engine.player.effect == nil && engine.player.playback.clipID.hasPrefix("idle.")
-            )) { timeline in
+            TimelineView(
+                .animation(
+                    minimumInterval: 1.0 / 15.0,
+                    paused: model.reduceMotion
+                        && player.effect == nil
+                        && player.playback.clipID.hasPrefix("idle.")
+                )
+            ) { timeline in
                 let manifest = assets.manifest
                 let playback = player.playback
                 let clip = manifest?.clips[playback.clipID]
@@ -98,20 +102,24 @@ struct PetView: View {
                     }
 
                     if sessions.runningCount > 0, let bubble = assets.hudImage("bubble") {
-                        ZStack(alignment: .topLeading) {
+                        let bubbleWidth = scene.bubbleWidth * scene.zoom
+                        let bubbleHeight = scene.bubbleHeight * scene.zoom
+                        ZStack(alignment: .top) {
                             Image(nsImage: bubble)
                                 .resizable()
                                 .interpolation(.none)
-                                .frame(width: scene.bubbleWidth * scene.zoom, height: scene.bubbleHeight * scene.zoom)
+                                .frame(width: bubbleWidth, height: bubbleHeight)
                             PixelCountView(count: sessions.runningCount, scale: scene.zoom, assets: assets)
                                 .frame(
-                                    width: scene.bubbleWidth * scene.zoom,
-                                    height: scene.bubbleHeight * scene.zoom * 0.8
+                                    width: bubbleWidth,
+                                    height: bubbleHeight * 0.76,
+                                    alignment: .center
                                 )
                         }
+                        .frame(width: bubbleWidth, height: bubbleHeight)
                         .offset(x: scene.bubbleOrigin.x * scene.zoom, y: scene.bubbleOrigin.y * scene.zoom)
                         .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                        .animation(.easeOut(duration: 0.15), value: sessions.runningCount > 0)
+                        .animation(model.reduceMotion ? nil : .easeOut(duration: 0.15), value: sessions.runningCount > 0)
                     }
 
                     if let effect = player.effect, let effectMetadata = manifest?.effects[effect.name] {
@@ -140,8 +148,11 @@ struct PetView: View {
                         onOpenSettings: model.openSettings,
                         onHidePet: model.hidePet
                     )
-                    .frame(width: scene.canvasWidth * scene.zoom, height: scene.canvasHeight * scene.zoom)
-                    .offset(x: scene.spriteOrigin.x * scene.zoom, y: scene.spriteOrigin.y * scene.zoom)
+                    .frame(width: scene.canvasWidth * 0.82 * scene.zoom, height: scene.canvasHeight * scene.zoom)
+                    .offset(
+                        x: (scene.spriteOrigin.x + scene.canvasWidth * 0.09) * scene.zoom,
+                        y: scene.spriteOrigin.y * scene.zoom
+                    )
                 }
                 .frame(width: scene.width * scene.zoom, height: scene.height * scene.zoom, alignment: .topLeading)
             }
@@ -211,7 +222,8 @@ struct PetSceneMetrics {
         let effectHeight = CGFloat(manifest?.effects.values.map { $0.outputSize[1] }.max() ?? 48)
         let right = max(max(canvasWidth, bubbleX + bubbleWidth), effectX + effectWidth / 2)
         let visibleHUDHeight = hudWindowCount == 1 ? hudHeight / 2 : hudHeight
-        let bottom = max(max(canvasHeight, effectY + effectHeight / 2), includesHUD ? hudY + visibleHUDHeight : 0)
+        let hudBottom = hudOrigin.y - margin + visibleHUDHeight
+        let bottom = max(max(canvasHeight, effectY + effectHeight / 2), includesHUD ? hudBottom : 0)
         width = right + margin * 2
         height = bottom + margin * 2
     }
@@ -231,6 +243,7 @@ private struct PixelHUDView: View {
         let source = singleWindow ? assets.singleBarImage(topSlot: topSlot) : assets.hudImage("bars")
         let size = manifest?.hud.size ?? [52, 24]
         let barHeight = CGFloat(size[1]) / (singleWindow ? 2 : 1)
+        let cropOffsetY = singleWindow && !topSlot ? size[1] / 2 : 0
         ZStack(alignment: .topLeading) {
             if let source {
                 Image(nsImage: source)
@@ -244,15 +257,18 @@ private struct PixelHUDView: View {
                     : manifest?.hud.barPositions[window.label]
                 if let bar, bar.count == 4 {
                     let remaining = min(100, max(0, window.remaining))
+                    let inset: CGFloat = 2
+                    let innerWidth = max(0, CGFloat(bar[2]) - inset * 2)
+                    let innerHeight = max(0, CGFloat(bar[3]) - inset * 2)
                     Rectangle()
                         .fill(color(for: remaining))
                         .frame(
-                            width: CGFloat(max(0, bar[2] - 4)) * CGFloat(remaining / 100) * scale,
-                            height: CGFloat(max(1, bar[3] - 4)) * scale
+                            width: innerWidth * CGFloat(remaining / 100) * scale,
+                            height: innerHeight * scale
                         )
                         .offset(
-                            x: CGFloat(bar[0] + 2) * scale,
-                            y: CGFloat(bar[1] + 2) * scale
+                            x: (CGFloat(bar[0]) + inset) * scale,
+                            y: (CGFloat(bar[1] - cropOffsetY) + inset) * scale
                         )
                 }
             }

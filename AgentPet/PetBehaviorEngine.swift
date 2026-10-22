@@ -2,7 +2,7 @@ import Combine
 import Foundation
 
 enum PetActivity: Equatable {
-    case idle, working, thinking, waiting, sleeping
+    case idle, working, waiting
     case disconnected, reconnecting, syncing, paused, unknown
 }
 
@@ -11,12 +11,14 @@ struct PetBehaviorContext: Equatable {
     let energy: PetEnergy
     let mood: PetMood
     let runningCount: Int
-    let needsInputCount: Int
     let isHovering: Bool
     let isDragging: Bool
     let isPaused: Bool
     let reduceMotion: Bool
     let themeID: String
+    let eventRevision: Int
+    let lifecycleEvent: String?
+    let lifecycleTransition: String?
 }
 
 @MainActor
@@ -33,11 +35,7 @@ final class PetBehaviorEngine: ObservableObject {
     private var idleCooldowns: [String: Date] = [:]
     private var lastActivityAt = Date.now
     private var temporaryMood: PetMood?
-
-    var frameInterval: TimeInterval {
-        guard let clip = assets.manifest?.clips[player.playback.clipID] else { return 0.18 }
-        return max(0.08, player.frameDelay(for: clip, at: .now))
-    }
+    private var lastEventRevision = 0
 
     init(player: AnimationPlayer, assets: SpriteAtlasStore = .shared) {
         self.player = player
@@ -53,11 +51,21 @@ final class PetBehaviorEngine: ObservableObject {
             loadBehavior()
             lastIdleClip = nil
             lastActivityAt = .now
+            lastEventRevision = next.eventRevision
             show(baseClip(for: next.activity), energy: next.energy, mood: next.mood, preservingTimeline: false)
             scheduleNextActivity()
             return
         }
-        if previous?.activity != next.activity || previous?.isPaused != next.isPaused { lastActivityAt = .now }
+        let hoverStarted = previous?.isHovering != true && next.isHovering
+        let hoverEnded = previous?.isHovering == true && !next.isHovering
+        let stateChanged = previous?.activity != next.activity || previous?.isPaused != next.isPaused
+        let newEvent = next.eventRevision != lastEventRevision
+        let presentationChanged = previous?.energy != next.energy || previous?.mood != next.mood
+        if newEvent { lastEventRevision = next.eventRevision }
+        if stateChanged || previous?.isDragging != next.isDragging || hoverStarted || hoverEnded {
+            lastActivityAt = .now
+        }
+        if hoverStarted || hoverEnded { cancelActivity() }
         if let previous, previous.energy != next.energy {
             switch next.energy {
             case .tired: player.playEffect("sweat")
@@ -67,38 +75,19 @@ final class PetBehaviorEngine: ObservableObject {
         }
 
         let target = next.isPaused ? role("paused", fallback: "status.paused") : baseClip(for: next.activity)
-        if [.waiting, .disconnected, .reconnecting, .paused].contains(next.activity) || next.isPaused {
-            cancelActivity()
-            if previous?.activity != next.activity || previous?.isPaused != next.isPaused {
-                if let previous, let transition = assets.manifest?.transition(from: visualState, to: target) {
-                    playSequence([transition, target], fallback: target)
-                } else {
-                    show(target, energy: next.energy, mood: next.mood)
-                }
-            } else if queuedClips.isEmpty {
-                show(target, energy: next.energy, mood: next.mood)
-            }
-            if previous?.activity != next.activity || previous?.isPaused != next.isPaused {
-                switch next.activity {
-                case .waiting: player.playEffect("alert")
-                case .reconnecting: player.playEffect("sync")
-                case .disconnected: player.playEffect("warning")
-                default: break
-                }
-            }
-            return
-        }
         if next.isDragging {
             cancelActivity()
             if player.playback.clipID != interaction("drag", fallback: "interact.drag_held")
                 && player.playback.clipID != interaction("dragStart", fallback: "interact.drag_pickup") {
                 let pickup = interaction("dragStart", fallback: "interact.drag_pickup")
-                let transition = assets.manifest?.transition(from: visualState, to: pickup)
-                playSequence([transition, pickup, interaction("drag", fallback: "interact.drag_held")].compactMap { $0 }, fallback: target)
+                let sequence = transitionSequence(from: visualState, to: pickup)
+                    + [interaction("drag", fallback: "interact.drag_held")]
+                playSequence(sequence, fallback: target)
             }
             return
         }
         if previous?.isDragging == true {
+            lastActivityAt = .now
             let held = interaction("drag", fallback: "interact.drag_held")
             let landing = interaction("dragEnd", fallback: "interact.land")
             let drop = assets.manifest?.transition(from: held, to: landing)
@@ -107,55 +96,92 @@ final class PetBehaviorEngine: ObservableObject {
             scheduleNextActivity()
             return
         }
-        let stateChanged = previous?.activity != next.activity || previous?.isPaused != next.isPaused
+
+        if !next.isPaused, newEvent, next.lifecycleEvent == "PermissionRequest" {
+            cancelActivity()
+            let notice = role("needsInput", fallback: "status.permission_notice")
+            playSequence(transitionSequence(from: visualState, to: notice) + [target], fallback: target)
+            player.playEffect("alert")
+            return
+        }
+        if !next.isPaused, newEvent, next.lifecycleEvent == "Interrupt",
+           next.lifecycleTransition == "interrupt" {
+            cancelActivity()
+            playSequence(["status.interrupted", target], fallback: target)
+            return
+        }
+        if !next.isPaused, newEvent, next.lifecycleEvent == "Stop",
+           next.lifecycleTransition == "finish", next.runningCount == 0 {
+            cancelActivity()
+            let working = baseClip(for: .working)
+            let ended = role("turnEnded", fallback: "work.stopping")
+            var sequence = [String]()
+            if let transition = assets.manifest?.transition(from: visualState, to: working) {
+                sequence.append(transition)
+            }
+            if let transition = assets.manifest?.transition(from: working, to: ended) {
+                sequence.append(transition)
+            }
+            sequence.append(ended)
+            if let transition = assets.manifest?.transition(from: ended, to: target) {
+                sequence.append(transition)
+            }
+            sequence.append(target)
+            playSequence(sequence, fallback: target)
+            return
+        }
+
+        if [.waiting, .disconnected, .reconnecting, .paused].contains(next.activity) || next.isPaused {
+            cancelActivity()
+            if stateChanged {
+                let sequence = transitionSequence(from: visualState, to: target)
+                playSequence(sequence, fallback: target)
+                switch next.activity {
+                case .reconnecting: player.playEffect("sync")
+                case .disconnected: player.playEffect("warning")
+                default: break
+                }
+            } else if queuedClips.isEmpty {
+                show(target, energy: next.energy, mood: next.mood)
+            }
+            return
+        }
+
         if stateChanged {
             cancelActivity()
-            if let previous, previous.activity == .working, next.activity == .idle,
+            if let previous, previous.activity == .reconnecting, next.activity == .idle,
                let manifest = assets.manifest {
-                let working = baseClip(for: .working)
-                let ended = role("turnEnded", fallback: "work.stopping")
-                var sequence = [String]()
-                if let transition = manifest.transition(from: visualState, to: working) { sequence.append(transition) }
-                if let transition = manifest.transition(from: working, to: ended) { sequence.append(transition) }
-                sequence.append(ended)
-                if let transition = manifest.transition(from: ended, to: target) { sequence.append(transition) }
-                sequence.append(target)
-                playSequence(sequence, fallback: target)
-            } else if let previous, previous.activity == .reconnecting, next.activity == .idle,
-                      let manifest = assets.manifest {
                 let connected = role("connected", fallback: "status.connected")
                 let first = manifest.transition(from: visualState, to: connected)
                 let second = manifest.transition(from: connected, to: target)
                 playSequence([first, connected, second, target].compactMap { $0 }, fallback: target)
-            } else if let transition = assets.manifest?.transition(from: visualState, to: target) {
-                playSequence([transition, target], fallback: target)
             } else {
-                show(target, energy: next.energy, mood: next.mood)
+                playSequence(transitionSequence(from: visualState, to: target), fallback: target)
             }
-            switch next.activity {
-            case .waiting: player.playEffect("alert")
-            case .reconnecting, .syncing: player.playEffect("sync")
-            case .disconnected: player.playEffect("warning")
-            case .sleeping: player.playEffect("zzz")
-            default: break
-            }
+            if next.activity == .reconnecting || next.activity == .syncing { player.playEffect("sync") }
+            if next.activity == .disconnected { player.playEffect("warning") }
             scheduleNextActivity()
             return
         }
 
         if next.isHovering {
-            guard next.activity == .idle else {
-                if previous?.isHovering != true { player.playEffect("heart") }
-                return
+            cancelActivity()
+            if next.activity == .idle, hoverStarted {
+                playHoverNotice()
+            } else if next.activity != .idle, hoverStarted {
+                player.playEffect("heart")
             }
-            if !player.playback.clipID.hasPrefix("interact.hover") { playHoverNotice() }
+            if presentationChanged, queuedClips.isEmpty {
+                show(player.playback.clipID, energy: next.energy, mood: next.mood)
+            }
             return
         }
 
-        if previous?.isHovering == true {
-            let peek = "interact.hover_peek"
-            let transition = assets.manifest?.transition(from: peek, to: target)
-            playSequence([peek, transition, target].compactMap { $0 }, fallback: target)
+        if hoverEnded {
+            let transition = assets.manifest?.transition(from: "interact.hover_peek", to: target)
+            playSequence([transition, target].compactMap { $0 }, fallback: target)
+        } else if player.playback.clipID == "idle.sleep", next.activity == .idle {
+            show("idle.sleep", energy: next.energy, mood: next.mood)
         } else if player.playback.clipID.hasPrefix("interact.hover") {
             show(target, energy: next.energy, mood: next.mood)
         } else if queuedClips.isEmpty {
@@ -172,24 +198,34 @@ final class PetBehaviorEngine: ObservableObject {
     private func performInteraction(clips: [String], mood: PetMood, effect: String) {
         guard let context, !context.isPaused, !context.isDragging,
               ![.waiting, .disconnected, .reconnecting].contains(context.activity) else { return }
+        lastActivityAt = .now
+        cancelActivity()
         if context.activity != .idle {
             player.playEffect(effect)
+            scheduleNextActivity()
             return
         }
-        cancelActivity()
         temporaryMood = mood
         player.playEffect(effect)
-        let transition = clips.first.flatMap { assets.manifest?.transition(from: visualState, to: $0) }
-        playSequence([transition].compactMap { $0 } + clips, fallback: baseClip(for: context.activity))
+        var sequence = [String]()
+        let source = player.playback.clipID == "idle.sleep" ? baseClip(for: .idle) : visualState
+        if player.playback.clipID == "idle.sleep",
+           let wake = assets.manifest?.transition(from: "idle.sleep", to: source) {
+            sequence.append(wake)
+        }
+        if let transition = clips.first.flatMap({ assets.manifest?.transition(from: source, to: $0) }) {
+            sequence.append(transition)
+        }
+        sequence.append(contentsOf: clips)
+        let fallback = context.isHovering ? "interact.hover_peek" : baseClip(for: context.activity)
+        playSequence(sequence, fallback: fallback)
     }
 
     private func baseClip(for activity: PetActivity) -> String {
         switch activity {
         case .idle: role("idle", fallback: "idle.breathe")
         case .working: role("working", fallback: "work.typing")
-        case .thinking: role("thinking", fallback: "work.thinking")
-        case .waiting: role("needsInput", fallback: "status.permission_notice")
-        case .sleeping: "idle.sleep"
+        case .waiting: role("unknown", fallback: "status.unknown")
         case .disconnected: role("disconnected", fallback: "status.disconnected")
         case .reconnecting: role("reconnecting", fallback: "status.reconnecting")
         case .syncing: assets.manifest?.clips["work.syncing"] == nil ? role("connected", fallback: "status.connected") : "work.syncing"
@@ -203,6 +239,28 @@ final class PetBehaviorEngine: ObservableObject {
 
     private var visualState: String {
         assets.manifest?.clips[player.playback.clipID]?.to ?? player.playback.clipID
+    }
+
+    private func transitionSequence(from current: String, to target: String) -> [String] {
+        guard let manifest = assets.manifest else { return [target] }
+        if current == "idle.sleep", target != "idle.sleep" {
+            let idle = baseClip(for: .idle)
+            return [manifest.transition(from: current, to: idle), manifest.transition(from: idle, to: target), target]
+                .compactMap { $0 }
+        }
+        if target == baseClip(for: .working) {
+            let idle = baseClip(for: .idle)
+            var sequence = [String]()
+            if current != idle, let transition = manifest.transition(from: current, to: idle) {
+                sequence.append(transition)
+            }
+            if let transition = manifest.transition(from: idle, to: target) {
+                sequence.append(transition)
+                sequence.append(target)
+                return sequence
+            }
+        }
+        return [manifest.transition(from: current, to: target), target].compactMap { $0 }
     }
 
     private func show(_ requested: String, energy: PetEnergy, mood: PetMood, preservingTimeline: Bool = true) {
@@ -232,11 +290,22 @@ final class PetBehaviorEngine: ObservableObject {
         if player.playback.revision == previousRevision, playbackTask != nil { return }
         playbackTask?.cancel()
         playbackTask = nil
-        guard resolvedClip.kind == "once", let frames = resolvedClip.variants[key]?.frames else { return }
-        let duration = max(0.01, frames.reduce(0) { $0 + $1.durationSeconds } - Date.now.timeIntervalSince(player.playback.startedAt))
+        guard resolvedClip.kind == "once" else { return }
+        let duration = max(0.01, duration(of: resolvedClip, energy: energy, mood: mood)
+            - Date.now.timeIntervalSince(player.playback.startedAt))
+        schedulePlayback(after: duration)
+    }
+
+    private func duration(of clip: AssetClip, energy: PetEnergy, mood: PetMood) -> TimeInterval {
+        let key = "\(energy.rawValue).\(mood.rawValue)"
+        guard let frames = clip.variants[key]?.frames else { return 0 }
+        return frames.reduce(0) { $0 + $1.durationSeconds }
+    }
+
+    private func schedulePlayback(after duration: TimeInterval) {
         let revision = player.playback.revision
         playbackTask = Task { [weak self] in
-            do { try await Task.sleep(for: .seconds(duration)) } catch { return }
+            do { try await Task.sleep(for: .seconds(max(0.01, duration))) } catch { return }
             guard !Task.isCancelled, self?.player.playback.revision == revision else { return }
             self?.finishPlayback()
         }
@@ -250,11 +319,10 @@ final class PetBehaviorEngine: ObservableObject {
     }
 
     private func playHoverNotice() {
-        guard let context else { return }
-        let base = baseClip(for: context.activity)
         let hover = interaction("hover", fallback: "interact.hover_notice")
-        let transition = assets.manifest?.transition(from: visualState, to: hover)
-        playSequence([transition, hover].compactMap { $0 }, fallback: base)
+        var sequence = transitionSequence(from: visualState, to: hover)
+        sequence.append(interaction("hoverPeek", fallback: "interact.hover_peek"))
+        playSequence(sequence, fallback: "interact.hover_peek")
         player.playEffect("heart")
     }
 
@@ -266,29 +334,16 @@ final class PetBehaviorEngine: ObservableObject {
             if queuedClips.isEmpty, clip.kind == "loop", next == sequenceFallback {
                 temporaryMood = nil
             }
-            show(next, energy: context.energy, mood: temporaryMood ?? context.mood, preservingTimeline: false)
+            let mood = temporaryMood ?? context.mood
+            show(next, energy: context.energy, mood: mood, preservingTimeline: false)
             if clip.kind == "loop" {
-                if queuedClips.isEmpty {
-                    let holdsState = context.isDragging || context.isHovering
-                        || [.waiting, .disconnected, .reconnecting, .paused].contains(context.activity)
-                        || next == sequenceFallback || next == "idle.sleep"
-                    if holdsState {
-                        scheduleNextActivity()
-                    } else {
-                        let revision = player.playback.revision
-                        playbackTask = Task { [weak self] in
-                            do { try await Task.sleep(for: .milliseconds(700)) } catch { return }
-                            guard !Task.isCancelled, self?.player.playback.revision == revision else { return }
-                            self?.finishPlayback()
-                        }
-                    }
+                let holdsState = context.isDragging
+                    || [.waiting, .disconnected, .reconnecting, .paused].contains(context.activity)
+                    || next == sequenceFallback
+                if queuedClips.isEmpty, holdsState {
+                    scheduleNextActivity()
                 } else {
-                    let revision = player.playback.revision
-                    playbackTask = Task { [weak self] in
-                        do { try await Task.sleep(for: .milliseconds(700)) } catch { return }
-                        guard !Task.isCancelled, self?.player.playback.revision == revision else { return }
-                        self?.finishPlayback()
-                    }
+                    schedulePlayback(after: duration(of: clip, energy: context.energy, mood: mood))
                 }
             }
             return
@@ -300,13 +355,12 @@ final class PetBehaviorEngine: ObservableObject {
 
     private func finishPlayback() {
         playbackTask = nil
-        if context?.isHovering == true, context?.activity == .idle, queuedClips.isEmpty {
-            playHoverNotice()
-            return
-        }
         if queuedClips.isEmpty {
             temporaryMood = nil
-            show(sequenceFallback, energy: context?.energy ?? .focused, mood: context?.mood ?? .neutral)
+            let fallback = context?.isHovering == true && context?.activity == .idle
+                ? "interact.hover_peek"
+                : sequenceFallback
+            show(fallback, energy: context?.energy ?? .focused, mood: context?.mood ?? .neutral)
             scheduleNextActivity()
         } else {
             playNext()
@@ -316,19 +370,25 @@ final class PetBehaviorEngine: ObservableObject {
     private func scheduleNextActivity() {
         cancelActivity()
         guard let context, !context.isPaused, !context.isDragging, !context.isHovering,
-              queuedClips.isEmpty, [.idle, .working].contains(context.activity) else { return }
+              queuedClips.isEmpty, [.idle, .working].contains(context.activity),
+              player.playback.clipID != "idle.sleep" else { return }
         let delay = context.activity == .working
             ? Double.random(in: (context.reduceMotion ? 35...55 : 18...32))
             : Double.random(in: (context.reduceMotion ? 35...55 : 13...24))
         activityTask = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }
             guard let self, !Task.isCancelled, let current = self.context else { return }
+            guard !current.isPaused, !current.isDragging, !current.isHovering,
+                  self.queuedClips.isEmpty else { return }
             if current.activity == .working {
                 self.playThinking()
             } else if let configuration = self.configuration,
                       Date.now.timeIntervalSince(self.lastActivityAt) >= configuration.sleepAfterSeconds,
                       !current.reduceMotion {
-                self.playSequence(["idle.sleep"], fallback: self.baseClip(for: current.activity))
+                let idle = self.baseClip(for: .idle)
+                let sleep = "idle.sleep"
+                let transition = self.assets.manifest?.transition(from: idle, to: sleep)
+                self.playSequence([transition, sleep, sleep, sleep].compactMap { $0 }, fallback: sleep)
                 self.player.playEffect("zzz")
             } else if !current.reduceMotion {
                 self.playIdleBehavior()
@@ -362,7 +422,7 @@ final class PetBehaviorEngine: ObservableObject {
         lastIdleClip = selected.clip
         idleCooldowns[selected.clip] = now.addingTimeInterval(selected.cooldownSeconds)
         playSequence([selected.clip], fallback: role("idle", fallback: "idle.breathe"))
-        if selected.clip == "idle.sleep" || selected.clip == "idle.doze" { player.playEffect("zzz") }
+        if selected.clip == "idle.doze" { player.playEffect("zzz") }
     }
 
     private func weightedChoice<Value>(_ values: [Value], weight: KeyPath<Value, Double>) -> Value? {

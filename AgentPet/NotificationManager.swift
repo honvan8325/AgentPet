@@ -26,6 +26,7 @@ final class NotificationManager: ObservableObject {
 
     private let center = UNUserNotificationCenter.current()
     private var deliveredEvents = Set<String>()
+    private var deliveredEventOrder: [String] = []
     private var lastQuotaAlert: [String: Date] = [:]
     private var previousRemaining: Double?
     private var previousWindowLabel: String?
@@ -54,6 +55,10 @@ final class NotificationManager: ObservableObject {
         guard preference else { return }
         let identifier = "\(sessionID)|\(turnID)|\(event.event)"
         guard deliveredEvents.insert(identifier).inserted else { return }
+        deliveredEventOrder.append(identifier)
+        if deliveredEventOrder.count > 256 {
+            deliveredEvents.remove(deliveredEventOrder.removeFirst())
+        }
         post(identifier: identifier, title: title, body: body)
     }
 
