@@ -181,7 +181,17 @@ struct SettingsView: View {
                 if PetTheme.available.count == 1 {
                     LabeledContent("Mascot", value: model.selectedTheme.title)
                 } else {
-                    Picker("Mascot", selection: Binding(get: { model.selectedTheme }, set: model.selectTheme)) {
+                    Picker(
+                        "Mascot",
+                        selection: Binding(
+                            get: {
+                                model.selectedTheme
+                            },
+                            set: { theme in
+                                model.selectTheme(theme)
+                            }
+                        )
+                    ) {
                         ForEach(PetTheme.available) { Text($0.title).tag($0) }
                     }
                 }
@@ -223,7 +233,17 @@ struct SettingsView: View {
             }
 
             Section("Desktop") {
-                Toggle("Launch at Login", isOn: Binding(get: { model.launchAtLoginEnabled }, set: model.setLaunchAtLogin))
+                Toggle(
+                    "Launch at Login",
+                    isOn: Binding(
+                        get: {
+                            model.launchAtLoginEnabled
+                        },
+                        set: { enabled in
+                            model.setLaunchAtLogin(enabled)
+                        }
+                    )
+                )
             }
 
             Section("Codex Integration") {
@@ -240,11 +260,15 @@ struct SettingsView: View {
                 Button("Check for Updates…") { model.checkForUpdates() }.disabled(model.updaterController == nil)
                 Toggle("Automatically check for updates", isOn: Binding(
                     get: { model.updaterController?.updater.automaticallyChecksForUpdates ?? false },
-                    set: model.setAutomaticUpdateChecks
+                    set: { enabled in
+                        model.setAutomaticUpdateChecks(enabled)
+                    }
                 )).disabled(model.updaterController == nil)
                 Toggle("Automatically download updates", isOn: Binding(
                     get: { model.updaterController?.updater.automaticallyDownloadsUpdates ?? false },
-                    set: model.setAutomaticDownloads
+                    set: { enabled in
+                        model.setAutomaticDownloads(enabled)
+                    }
                 )).disabled(!model.canAutomaticallyDownloadUpdates)
                 if model.updaterController == nil {
                     Text("Update checks are unavailable until a release feed and EdDSA public key are configured.")

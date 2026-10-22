@@ -69,6 +69,61 @@
       "clip": "interact.wave",
       "weight": 0.4,
       "cooldownSeconds": 210
+    },
+    {
+      "clip": "emotion.curious",
+      "weight": 0.75,
+      "cooldownSeconds": 125
+    },
+    {
+      "clip": "emotion.confused",
+      "weight": 0.4,
+      "cooldownSeconds": 180
+    },
+    {
+      "clip": "emotion.surprised",
+      "weight": 0.35,
+      "cooldownSeconds": 200
+    },
+    {
+      "clip": "emotion.proud",
+      "weight": 0.25,
+      "cooldownSeconds": 260
+    },
+    {
+      "clip": "emotion.relieved",
+      "weight": 0.4,
+      "cooldownSeconds": 210
+    },
+    {
+      "clip": "emotion.sleepy",
+      "weight": 0.65,
+      "cooldownSeconds": 155
+    },
+    {
+      "clip": "react.big_hop",
+      "weight": 0.22,
+      "cooldownSeconds": 260
+    },
+    {
+      "clip": "react.happy_spin",
+      "weight": 0.18,
+      "cooldownSeconds": 300
+    },
+    {
+      "clip": "react.sparkle_pose",
+      "weight": 0.3,
+      "cooldownSeconds": 220
+    },
+    {
+      "clip": "react.heart_pose",
+      "weight": 0.3,
+      "cooldownSeconds": 230
+    },
+    {
+      "clip": "interact.wave_goodbye",
+      "weight": 0.2,
+      "cooldownSeconds": 280
     }
   ],
   "avoidImmediateRepeat": true,

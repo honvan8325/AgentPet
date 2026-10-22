@@ -9,6 +9,7 @@ enum PetActivity: Equatable {
 struct PetBehaviorContext: Equatable {
     let activity: PetActivity
     let energy: PetEnergy
+    let hasQuotaData: Bool
     let mood: PetMood
     let runningCount: Int
     let isHovering: Bool
@@ -66,11 +67,19 @@ final class PetBehaviorEngine: ObservableObject {
             lastActivityAt = .now
         }
         if hoverStarted || hoverEnded { cancelActivity() }
-        if let previous, previous.energy != next.energy {
+        if let previous,
+           previous.hasQuotaData,
+           next.hasQuotaData,
+           previous.energy != next.energy {
             switch next.energy {
-            case .tired: player.playEffect("sweat")
-            case .exhausted, .empty: player.playEffect("warning")
-            case .fresh, .focused: break
+            case .tired:
+                player.playEffect("sweat")
+
+            case .exhausted, .empty:
+                player.playEffect("warning")
+
+            case .fresh, .focused:
+                break
             }
         }
 
@@ -177,6 +186,69 @@ final class PetBehaviorEngine: ObservableObject {
             return
         }
 
+        if let previous,
+           previous.hasQuotaData,
+           next.hasQuotaData,
+           previous.energy != next.energy,
+           next.activity == .idle,
+           !next.isPaused,
+           !next.isDragging,
+           !next.isHovering,
+           !next.reduceMotion,
+           !stateChanged,
+           !hoverEnded,
+           queuedClips.isEmpty,
+           playbackTask == nil,
+           player.playback.clipID != "idle.sleep" {
+
+            let energies = PetEnergy.allCases
+
+            guard let oldIndex = energies.firstIndex(of: previous.energy),
+                  let newIndex = energies.firstIndex(of: next.energy) else {
+                return
+            }
+
+            var reactions: [String] = []
+
+            if newIndex < oldIndex {
+                reactions.append("energy.recover")
+            } else if oldIndex < 3 && newIndex >= 3 {
+                reactions.append("energy.quota_critical")
+            } else if oldIndex < 2 && newIndex >= 2 {
+                reactions.append("energy.quota_low")
+            }
+
+            let posture: String
+
+            switch next.energy {
+            case .fresh:
+                posture = "energy.fresh_bounce"
+
+            case .focused:
+                posture = "energy.focused_still"
+
+            case .tired:
+                posture = "energy.tired_slouch"
+
+            case .exhausted:
+                posture = "energy.exhausted_droop"
+
+            case .empty:
+                posture = "energy.empty_collapse"
+            }
+
+            reactions.append(posture)
+
+            let idle = baseClip(for: .idle)
+
+            playSequence(
+                reactions + [idle],
+                fallback: idle
+            )
+
+            return
+        }
+
         if hoverEnded {
             let transition = assets.manifest?.transition(from: "interact.hover_peek", to: target)
             playSequence([transition, target].compactMap { $0 }, fallback: target)
@@ -184,7 +256,7 @@ final class PetBehaviorEngine: ObservableObject {
             show("idle.sleep", energy: next.energy, mood: next.mood)
         } else if player.playback.clipID.hasPrefix("interact.hover") {
             show(target, energy: next.energy, mood: next.mood)
-        } else if queuedClips.isEmpty {
+        } else if queuedClips.isEmpty, playbackTask == nil {
             show(target, energy: next.energy, mood: temporaryMood ?? next.mood)
         }
         scheduleNextActivity()
@@ -192,7 +264,17 @@ final class PetBehaviorEngine: ObservableObject {
 
     func click() { performInteraction(clips: [interaction("click", fallback: "interact.boop"), "emotion.shy"], mood: .shy, effect: "heart") }
     func doubleClick() { performInteraction(clips: ["interact.double_tap", "interact.giggle"], mood: .happy, effect: "sparkle") }
-    func repeatedClick() { performInteraction(clips: ["interact.pout", "emotion.frustrated"], mood: .worried, effect: "sweat") }
+    func repeatedClick() {
+        performInteraction(
+            clips: [
+                "interact.pout",
+                "react.panic_tap",
+                "emotion.frustrated"
+            ],
+            mood: .worried,
+            effect: "sweat"
+        )
+    }
     func stop() { cancelTasks() }
 
     private func performInteraction(clips: [String], mood: PetMood, effect: String) {
@@ -370,7 +452,8 @@ final class PetBehaviorEngine: ObservableObject {
     private func scheduleNextActivity() {
         cancelActivity()
         guard let context, !context.isPaused, !context.isDragging, !context.isHovering,
-              queuedClips.isEmpty, [.idle, .working].contains(context.activity),
+              queuedClips.isEmpty, playbackTask == nil,
+              [.idle, .working].contains(context.activity),
               player.playback.clipID != "idle.sleep" else { return }
         let delay = context.activity == .working
             ? Double.random(in: (context.reduceMotion ? 35...55 : 18...32))
@@ -381,7 +464,7 @@ final class PetBehaviorEngine: ObservableObject {
             guard !current.isPaused, !current.isDragging, !current.isHovering,
                   self.queuedClips.isEmpty else { return }
             if current.activity == .working {
-                self.playThinking()
+                self.playWorkBreak()
             } else if let configuration = self.configuration,
                       Date.now.timeIntervalSince(self.lastActivityAt) >= configuration.sleepAfterSeconds,
                       !current.reduceMotion {
@@ -396,33 +479,136 @@ final class PetBehaviorEngine: ObservableObject {
         }
     }
 
-    private func playThinking() {
-        guard let context, context.activity == .working else { return }
-        let work = role("working", fallback: "work.typing")
-        let thinking = role("thinking", fallback: "work.thinking")
-        var sequence = [String]()
-        if let transition = assets.manifest?.transition(from: work, to: thinking) { sequence.append(transition) }
-        sequence.append(thinking)
-        if let transition = assets.manifest?.transition(from: thinking, to: work) { sequence.append(transition) }
-        sequence.append(work)
-        temporaryMood = .curious
-        playSequence(sequence, fallback: work)
-        player.playEffect("question")
+    private func playWorkBreak() {
+        guard let context,
+              context.activity == .working,
+              !context.isDragging,
+              !context.isPaused else {
+            return
+        }
+
+        let working = role(
+            "working",
+            fallback: "work.typing"
+        )
+
+        let thinking = role(
+            "thinking",
+            fallback: "work.thinking"
+        )
+
+        // Reading appears less often than thinking.
+        let isReading = Int.random(in: 0..<3) == 0
+
+        let activity = isReading
+            ? "work.reading"
+            : thinking
+
+        var sequence: [String] = []
+
+        if let transition = assets.manifest?.transition(
+            from: working,
+            to: activity
+        ) {
+            sequence.append(transition)
+        }
+
+        sequence.append(activity)
+
+        if let transition = assets.manifest?.transition(
+            from: activity,
+            to: working
+        ) {
+            sequence.append(transition)
+        }
+
+        sequence.append(working)
+
+        temporaryMood = isReading ? .neutral : .curious
+
+        playSequence(
+            sequence,
+            fallback: working
+        )
+
+        if !isReading {
+            player.playEffect("question")
+        }
     }
 
     private func playIdleBehavior() {
-        guard let context, context.activity == .idle, let configuration else { return }
-        let now = Date.now
-        let choices = configuration.idleBehaviors.filter {
-            (idleCooldowns[$0.clip] ?? .distantPast) <= now
-                && (!configuration.avoidImmediateRepeat || $0.clip != lastIdleClip)
-                && assets.manifest?.clips[$0.clip] != nil
+        guard let context,
+              context.activity == .idle,
+              let configuration else {
+            return
         }
-        guard let selected = weightedChoice(choices, weight: \.weight) else { return }
+
+        let now = Date.now
+
+        let energeticClips: Set<String> = [
+            "react.big_hop",
+            "react.happy_spin",
+            "react.tiny_dance",
+            "idle.stretch"
+        ]
+
+        let sleepyClips: Set<String> = [
+            "emotion.sleepy",
+            "idle.doze"
+        ]
+
+        let isTired = [
+            PetEnergy.tired,
+            .exhausted,
+            .empty
+        ].contains(context.energy)
+
+        let choices = configuration.idleBehaviors.filter { item in
+            guard (idleCooldowns[item.clip] ?? .distantPast) <= now,
+                  !configuration.avoidImmediateRepeat
+                    || item.clip != lastIdleClip,
+                  assets.manifest?.clips[item.clip] != nil else {
+                return false
+            }
+
+            if isTired && energeticClips.contains(item.clip) {
+                return false
+            }
+
+            if !isTired && sleepyClips.contains(item.clip) {
+                return false
+            }
+
+            return true
+        }
+
+        guard let selected = weightedChoice(
+            choices,
+            weight: \.weight
+        ) else {
+            scheduleNextActivity()
+            return
+        }
+
         lastIdleClip = selected.clip
-        idleCooldowns[selected.clip] = now.addingTimeInterval(selected.cooldownSeconds)
-        playSequence([selected.clip], fallback: role("idle", fallback: "idle.breathe"))
-        if selected.clip == "idle.doze" { player.playEffect("zzz") }
+        idleCooldowns[selected.clip] = now.addingTimeInterval(
+            selected.cooldownSeconds
+        )
+
+        let idle = role(
+            "idle",
+            fallback: "idle.breathe"
+        )
+
+        playSequence(
+            [selected.clip],
+            fallback: idle
+        )
+
+        if selected.clip == "idle.doze" ||
+           selected.clip == "emotion.sleepy" {
+            player.playEffect("zzz")
+        }
     }
 
     private func weightedChoice<Value>(_ values: [Value], weight: KeyPath<Value, Double>) -> Value? {

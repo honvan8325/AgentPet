@@ -42,6 +42,7 @@ struct PetView: View {
         return PetBehaviorContext(
             activity: activity,
             energy: PetEnergy.select(remaining: codex.usage?.energyWindow?.remaining) ?? .focused,
+            hasQuotaData: codex.usage?.energyWindow != nil,
             mood: mood,
             runningCount: sessions.runningCount,
             isHovering: isHovering,
