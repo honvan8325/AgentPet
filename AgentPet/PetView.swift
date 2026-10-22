@@ -675,9 +675,21 @@ struct PetView: View {
             .frame(width: 96 * pixelScale, height: 96 * pixelScale)
 
             if model.showUsageHUD {
+                let onlyWeekly =
+                    codex.usage?.fiveHour == nil &&
+                    codex.usage?.sevenDay != nil
+
+                let hudOffset = CGFloat(
+                    (layout?.hudOffsetY ?? -6) - (onlyWeekly ? 2 : 0)
+                ) * pixelScale
+
                 PixelHUDView(snapshot: codex.usage, scale: pixelScale)
-                    .frame(width: 36 * pixelScale, height: 14 * pixelScale)
-                    .offset(y: CGFloat(layout?.hudOffsetY ?? -6) * pixelScale)
+                    .frame(
+                        width: 36 * pixelScale,
+                        height: 14 * pixelScale,
+                        alignment: .top
+                    )
+                    .offset(y: hudOffset)
             }
         }
         .padding(.top, 8 * pixelScale)
@@ -863,7 +875,8 @@ private struct PixelHUDView: View {
         }
         .frame(
             width: width * scale,
-            height: height * scale
+            height: height * scale,
+            alignment: .topLeading
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityDescription)
