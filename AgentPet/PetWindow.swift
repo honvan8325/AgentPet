@@ -5,11 +5,20 @@ import SwiftUI
 final class PetPanelController: NSObject, NSWindowDelegate {
     private let model: AgentPetModel
     private let panel: NSPanel
+    private var layoutNeedsApply = false
 
     init(model: AgentPetModel) {
         self.model = model
+        let metrics = PetSceneMetrics(
+            manifest: SpriteAtlasStore.shared.manifest,
+            anchors: SpriteAtlasStore.shared.anchors,
+            includesHUD: model.showUsageHUD && !(model.codex.usage?.availableWindows.isEmpty ?? true),
+            hudWindowCount: model.codex.usage?.availableWindows.count ?? 0,
+            bubbleSize: SpriteAtlasStore.shared.bubblePixelSize,
+            zoom: CGFloat(model.petSize.pixelScale)
+        )
         panel = NSPanel(
-            contentRect: CGRect(x: 0, y: 0, width: 120, height: 130),
+            contentRect: CGRect(x: 0, y: 0, width: metrics.width * metrics.zoom, height: metrics.height * metrics.zoom),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -17,7 +26,7 @@ final class PetPanelController: NSObject, NSWindowDelegate {
         super.init()
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.level = .floating
+        panel.level = model.alwaysOnTop ? .floating : .normal
         panel.hidesOnDeactivate = false
         panel.hasShadow = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -26,7 +35,16 @@ final class PetPanelController: NSObject, NSWindowDelegate {
         panel.contentView = NSHostingView(rootView: PetView(model: model))
         model.onPetSizeChange = { [weak self] in self?.applyLayout() }
         model.onPetLayoutChange = { [weak self] in self?.applyLayout() }
-        model.onPetDragEnd = { [weak self] in self?.clampAndSave() }
+        model.onPetDragEnd = { [weak self] in
+            guard let self else { return }
+            if layoutNeedsApply { applyLayout() } else { clampAndSave() }
+        }
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(screenConfigurationDidChange(_:)),
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: nil
+        )
         restoreFrame()
     }
 
@@ -34,19 +52,23 @@ final class PetPanelController: NSObject, NSWindowDelegate {
     func hide() { panel.orderOut(nil) }
     func toggle() { panel.isVisible ? hide() : show() }
 
-    func windowDidChangeScreen(_ notification: Notification) { clampAndSave() }
+    func windowDidChangeScreen(_ notification: Notification) {
+        guard !model.isPetDragging else { return }
+        clampAndSave()
+    }
 
     func savePosition() { clampAndSave() }
 
     private func applyLayout() {
+        guard !model.isPetDragging else { layoutNeedsApply = true; return }
+        layoutNeedsApply = false
         let old = panel.frame
-        let scale = CGFloat(model.petSize.pixelScale)
-        let size = NSSize(
-            width: 120 * scale,
-            height: (96 + 4 + (model.showUsageHUD ? 14 : 0) + 16) * scale
-        )
+        let metrics = currentMetrics
+        let size = NSSize(width: metrics.width * metrics.zoom, height: metrics.height * metrics.zoom)
+        panel.level = model.alwaysOnTop ? .floating : .normal
+        guard old.size != size else { clampAndSave(); return }
         panel.setFrame(
-            CGRect(x: old.midX - size.width / 2, y: old.midY - size.height / 2, width: size.width, height: size.height),
+            CGRect(x: old.minX, y: old.maxY - size.height, width: size.width, height: size.height),
             display: true,
             animate: true
         )
@@ -54,11 +76,8 @@ final class PetPanelController: NSObject, NSWindowDelegate {
     }
 
     private func restoreFrame() {
-        let scale = CGFloat(model.petSize.pixelScale)
-        let size = NSSize(
-            width: 120 * scale,
-            height: (96 + 4 + (model.showUsageHUD ? 14 : 0) + 16) * scale
-        )
+        let metrics = currentMetrics
+        let size = NSSize(width: metrics.width * metrics.zoom, height: metrics.height * metrics.zoom)
         let defaults = UserDefaults.standard
         if defaults.object(forKey: "petWindowX") != nil,
            defaults.object(forKey: "petWindowY") != nil {
@@ -80,15 +99,49 @@ final class PetPanelController: NSObject, NSWindowDelegate {
     }
 
     private func clampAndSave() {
-        if let visible = panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame {
+        if model.keepFullyVisible,
+           let visible = panel.screen?.visibleFrame ?? nearestScreen?.visibleFrame ?? NSScreen.main?.visibleFrame {
             var frame = panel.frame
-            let margin = min(56, frame.width / 3, frame.height / 3)
-            frame.origin.x = min(max(frame.origin.x, visible.minX - frame.width + margin), visible.maxX - margin)
-            frame.origin.y = min(max(frame.origin.y, visible.minY - frame.height + margin), visible.maxY - margin)
+            frame.origin.x = min(max(frame.origin.x, visible.minX), visible.maxX - frame.width)
+            frame.origin.y = min(max(frame.origin.y, visible.minY), visible.maxY - frame.height)
             if frame.origin != panel.frame.origin { panel.setFrameOrigin(frame.origin) }
         }
         UserDefaults.standard.set(panel.frame.origin.x, forKey: "petWindowX")
         UserDefaults.standard.set(panel.frame.origin.y, forKey: "petWindowY")
+    }
+
+    @objc private func screenConfigurationDidChange(_ notification: Notification) {
+        guard !model.isPetDragging else { return }
+        if panel.screen == nil, let visible = nearestScreen?.visibleFrame {
+            var frame = panel.frame
+            frame.origin.x = min(max(frame.origin.x, visible.minX), visible.maxX - frame.width)
+            frame.origin.y = min(max(frame.origin.y, visible.minY), visible.maxY - frame.height)
+            panel.setFrameOrigin(frame.origin)
+        }
+        clampAndSave()
+    }
+
+    private var currentMetrics: PetSceneMetrics {
+        PetSceneMetrics(
+            manifest: SpriteAtlasStore.shared.manifest,
+            anchors: SpriteAtlasStore.shared.anchors,
+            includesHUD: hasVisibleHUD,
+            hudWindowCount: model.codex.usage?.availableWindows.count ?? 0,
+            bubbleSize: SpriteAtlasStore.shared.bubblePixelSize,
+            zoom: CGFloat(model.petSize.pixelScale)
+        )
+    }
+
+    private var hasVisibleHUD: Bool {
+        model.showUsageHUD && !(model.codex.usage?.availableWindows.isEmpty ?? true)
+    }
+
+    private var nearestScreen: NSScreen? {
+        let center = CGPoint(x: panel.frame.midX, y: panel.frame.midY)
+        return NSScreen.screens.min { left, right in
+            hypot(left.frame.midX - center.x, left.frame.midY - center.y)
+                < hypot(right.frame.midX - center.x, right.frame.midY - center.y)
+        }
     }
 }
 
@@ -100,7 +153,7 @@ final class DashboardWindowController {
     init(model: AgentPetModel) {
         self.model = model
         window = NSWindow(
-            contentRect: CGRect(x: 0, y: 0, width: 440, height: 620),
+            contentRect: CGRect(x: 0, y: 0, width: 500, height: 720),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -129,7 +182,7 @@ final class SettingsWindowController {
 
     init(model: AgentPetModel) {
         window = NSWindow(
-            contentRect: CGRect(x: 0, y: 0, width: 420, height: 500),
+            contentRect: CGRect(x: 0, y: 0, width: 440, height: 680),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -137,6 +190,30 @@ final class SettingsWindowController {
         window.title = "AgentPet Settings"
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: SettingsView(model: model))
+        window.center()
+    }
+
+    func show() {
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+@MainActor
+final class OnboardingWindowController {
+    private let window: NSWindow
+
+    init(model: AgentPetModel) {
+        let onboardingWindow = NSWindow(
+            contentRect: CGRect(x: 0, y: 0, width: 480, height: 390),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window = onboardingWindow
+        window.title = "Welcome to AgentPet"
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: OnboardingView(model: model) { [weak onboardingWindow] in onboardingWindow?.close() })
         window.center()
     }
 

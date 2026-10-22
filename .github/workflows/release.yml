@@ -104,6 +104,7 @@ jobs:
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGN_IDENTITY=- \
             DEVELOPMENT_TEAM="" \
+            ENABLE_HARDENED_RUNTIME=NO \
             build
 
       - name: Verify app bundle
@@ -125,29 +126,21 @@ jobs:
           RESOURCES="$APP/Contents/Resources"
           test -f "$RESOURCES/AgentPetTemplate-18.png"
 
+          test -f AgentPet/Assets.xcassets/AppIcon.appiconset/Contents.json
+          test -f "$RESOURCES/Assets.car"
           shopt -s nullglob
           THEME_DIRS=("$RESOURCES"/Themes/*/)
-          test "${#THEME_DIRS[@]}" -gt 0
-          for theme_dir in "${THEME_DIRS[@]}"; do
-            manifest="${theme_dir}manifest.json"
-            test -f "$manifest"
-            jq -e '(.tiers | keys | sort) == ["empty", "exhausted", "focused", "fresh", "tired"]' "$manifest" >/dev/null
-            while IFS= read -r atlas; do
-              test -f "$theme_dir/$atlas"
-            done < <(jq -r '.tiers[].file' "$manifest" | sort -u)
-          done
-
-          for image in \
-            bars \
-            digits \
-            fill_green \
-            fill_amber \
-            fill_red \
-            fill_empty \
-            task_bubble
-          do
-            test -f "$RESOURCES/Shared/$image.png"
-          done
+          test "${#THEME_DIRS[@]}" -eq 1
+          THEME="${THEME_DIRS[0]}"
+          test "$(basename "${THEME%/}")" = "chick"
+          MANIFEST="$THEME/manifest.json"
+          test -f "$MANIFEST"
+          jq -e '.schemaVersion == 3 and .themeId == "chick" and .compatibility.legacyManifestSupportedViaAdapter == false and (.clips | length) == 88 and (.atlases | length) == 308' "$MANIFEST" >/dev/null
+          test -f "$THEME/atlases/page-000.png"
+          test -f "$THEME/atlases/page-307.png"
+          test ! -e "$THEME/source"
+          test -s "$THEME/bars.png"
+          test -s "$THEME/task_bubble.png"
           test -d "$APP/Contents/Frameworks/Sparkle.framework"
           test "$(lipo -archs "$HELPER")" = "arm64"
           codesign --verify --strict "$APP"

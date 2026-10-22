@@ -19,8 +19,12 @@
 		A10000000000000000000019 /* AgentPetHook in Embed Helpers */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001C /* AgentPetHook */; settings = {ATTRIBUTES = (CodeSignOnCopy,); }; };
 		A1000000000000000000001A /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001B /* main.swift */; };
 		A1000000000000000000001B /* PetTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000020 /* PetTheme.swift */; };
-		A1000000000000000000001C /* Shared in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000021 /* Shared */; };
 		A1000000000000000000001D /* Themes in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000022 /* Themes */; };
+		A1000000000000000000001E /* AssetManifest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000023 /* AssetManifest.swift */; };
+		A1000000000000000000001F /* SpriteAtlasStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000024 /* SpriteAtlasStore.swift */; };
+		A10000000000000000000020 /* AnimationPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000025 /* AnimationPlayer.swift */; };
+		A10000000000000000000021 /* PetBehaviorEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000026 /* PetBehaviorEngine.swift */; };
+		A10000000000000000000022 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000027 /* NotificationManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -34,8 +38,12 @@
 		A20000000000000000000008 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A2000000000000000000000C /* AgentPetTemplate-18.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AgentPetTemplate-18.png; sourceTree = "<group>"; };
 		A20000000000000000000020 /* PetTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetTheme.swift; sourceTree = "<group>"; };
-		A20000000000000000000021 /* Shared */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Shared; sourceTree = "<group>"; };
 		A20000000000000000000022 /* Themes */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Themes; sourceTree = "<group>"; };
+		A20000000000000000000023 /* AssetManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetManifest.swift; sourceTree = "<group>"; };
+		A20000000000000000000024 /* SpriteAtlasStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpriteAtlasStore.swift; sourceTree = "<group>"; };
+		A20000000000000000000025 /* AnimationPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimationPlayer.swift; sourceTree = "<group>"; };
+		A20000000000000000000026 /* PetBehaviorEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetBehaviorEngine.swift; sourceTree = "<group>"; };
+		A20000000000000000000027 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 		A2000000000000000000000D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A2000000000000000000000E /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = SOURCE_ROOT; };
 		A2000000000000000000000F /* AgentPet.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AgentPet.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -66,6 +74,11 @@
 			children = (
 				A20000000000000000000001 /* AgentPetApp.swift */,
 				A20000000000000000000020 /* PetTheme.swift */,
+				A20000000000000000000023 /* AssetManifest.swift */,
+				A20000000000000000000024 /* SpriteAtlasStore.swift */,
+				A20000000000000000000025 /* AnimationPlayer.swift */,
+				A20000000000000000000026 /* PetBehaviorEngine.swift */,
+				A20000000000000000000027 /* NotificationManager.swift */,
 				A20000000000000000000002 /* CodexClient.swift */,
 				A20000000000000000000003 /* SessionStore.swift */,
 				A20000000000000000000004 /* HookIntegration.swift */,
@@ -85,7 +98,6 @@
 			sourceTree = "<group>";
 			children = (
 				A2000000000000000000000C /* AgentPetTemplate-18.png */,
-				A20000000000000000000021 /* Shared */,
 				A20000000000000000000022 /* Themes */,
 			);
 		};
@@ -159,7 +171,6 @@
 			files = (
 				A10000000000000000000008 /* Assets.xcassets in Resources */,
 				A1000000000000000000000C /* AgentPetTemplate-18.png in Resources */,
-				A1000000000000000000001C /* Shared in Resources */,
 				A1000000000000000000001D /* Themes in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -173,6 +184,11 @@
 			files = (
 				A10000000000000000000001 /* AgentPetApp.swift in Sources */,
 				A1000000000000000000001B /* PetTheme.swift in Sources */,
+				A1000000000000000000001E /* AssetManifest.swift in Sources */,
+				A1000000000000000000001F /* SpriteAtlasStore.swift in Sources */,
+				A10000000000000000000020 /* AnimationPlayer.swift in Sources */,
+				A10000000000000000000021 /* PetBehaviorEngine.swift in Sources */,
+				A10000000000000000000022 /* NotificationManager.swift in Sources */,
 				A10000000000000000000002 /* CodexClient.swift in Sources */,
 				A10000000000000000000003 /* SessionStore.swift in Sources */,
 				A10000000000000000000004 /* HookIntegration.swift in Sources */,

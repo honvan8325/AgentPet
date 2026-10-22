@@ -347,6 +347,10 @@ struct UsageSnapshot {
     }
 }
 
+enum UsageAvailability: String, Equatable {
+    case loading, available, unavailable, disconnected
+}
+
 @MainActor
 final class CodexClient: ObservableObject {
     enum ConnectionState: Equatable {
@@ -355,8 +359,10 @@ final class CodexClient: ObservableObject {
 
     @Published private(set) var connectionState: ConnectionState = .disconnected
     @Published private(set) var usage: UsageSnapshot?
+    @Published private(set) var usageAvailability: UsageAvailability = .disconnected
     @Published private(set) var threads: [CodexThread] = []
     @Published private(set) var errorMessage: String?
+    var onUsageUpdate: ((UsageSnapshot?) -> Void)?
 
     private struct MetadataLookup {
         let id: UUID
@@ -375,13 +381,14 @@ final class CodexClient: ObservableObject {
     private var preservedThreadIDs = Set<String>()
     private var consecutiveTimeouts = 0
     private var connectionGeneration: UInt64 = 0
+    private var usageRevision: UInt64 = 0
     private let pageSize = 50
 
     func connect(reconnecting: Bool) async throws {
         connectionGeneration &+= 1
         let generation = connectionGeneration
         connectionState = reconnecting ? .reconnecting : .connecting
-        usage = nil
+        setUsage(nil)
         for lookup in metadataLookups.values { lookup.task.cancel() }
         metadataLookups.removeAll(keepingCapacity: true)
         metadataMisses.removeAll(keepingCapacity: true)
@@ -398,12 +405,13 @@ final class CodexClient: ObservableObject {
             try await rpc.start()
             guard generation == connectionGeneration else { throw RPCTransportError.closed }
             connectionState = .connected
+            usageAvailability = usage == nil ? .loading : .available
             consecutiveTimeouts = 0
             errorMessage = nil
         } catch {
             if generation == connectionGeneration {
                 connectionState = .disconnected
-                usage = nil
+                setUsage(nil)
                 errorMessage = error.localizedDescription
                 await rpc.stop()
             }
@@ -414,29 +422,32 @@ final class CodexClient: ObservableObject {
     func refreshUsage() async {
         guard connectionState == .connected else { return }
         let generation = connectionGeneration
+        let revision = usageRevision
         do {
             let data = try await rpc.request("account/rateLimits/read", params: .object([:]))
             guard generation == connectionGeneration, connectionState == .connected else { return }
+            guard revision == usageRevision else { return }
             consecutiveTimeouts = 0
             let result = try Self.resultObject(data)
             let bucket = ((result["rateLimitsByLimitId"] as? [String: Any])?["codex"] as? [String: Any])
                 ?? (result["rateLimits"] as? [String: Any])
             guard let bucket else {
-                usage = nil
+                setUsage(nil)
                 errorMessage = "Codex usage is unavailable."
                 return
             }
             let windows = Self.parseWindows(bucket)
             guard !windows.isEmpty else {
-                usage = nil
+                setUsage(nil)
                 errorMessage = "Codex usage is unavailable."
                 return
             }
-            usage = UsageSnapshot(fiveHour: windows[300], sevenDay: windows[10080], updatedAt: Date())
+            setUsage(UsageSnapshot(fiveHour: windows[300], sevenDay: windows[10080], updatedAt: Date()))
             errorMessage = nil
         } catch {
             guard generation == connectionGeneration else { return }
-            usage = nil
+            guard revision == usageRevision else { return }
+            setUsage(nil)
             errorMessage = error.localizedDescription
             handleRequestError(error)
         }
@@ -535,15 +546,23 @@ final class CodexClient: ObservableObject {
 
     func prepareReconnect() async {
         connectionGeneration &+= 1
-        usage = nil
+        setUsage(nil)
+        for lookup in metadataLookups.values { lookup.task.cancel() }
+        metadataLookups.removeAll(keepingCapacity: true)
+        metadataMisses.removeAll(keepingCapacity: true)
+        metadataRetryAfter.removeAll(keepingCapacity: true)
+        preservedThreadIDs.removeAll(keepingCapacity: true)
+        threads.removeAll(keepingCapacity: true)
         await rpc.stop()
         connectionState = .reconnecting
+        usageAvailability = .loading
     }
 
     func shutdown() async {
         connectionGeneration &+= 1
-        usage = nil
+        setUsage(nil)
         connectionState = .disconnected
+        usageAvailability = .disconnected
         await rpc.stop()
     }
 
@@ -551,8 +570,9 @@ final class CodexClient: ObservableObject {
         guard expectedGeneration == nil || expectedGeneration == connectionGeneration,
               connectionState != .disconnected else { return }
         connectionGeneration &+= 1
-        usage = nil
+        setUsage(nil)
         connectionState = .reconnecting
+        usageAvailability = .loading
         errorMessage = error.localizedDescription
     }
 
@@ -563,13 +583,15 @@ final class CodexClient: ObservableObject {
         case .timeout:
             consecutiveTimeouts += 1
             if consecutiveTimeouts >= 2 {
-                usage = nil
+                setUsage(nil)
                 connectionState = .reconnecting
+                usageAvailability = .loading
             }
         case .closed, .invalidJSON, .write:
             consecutiveTimeouts = 0
-            usage = nil
+            setUsage(nil)
             connectionState = .reconnecting
+            usageAvailability = .loading
         case .unavailable, .server:
             consecutiveTimeouts = 0
         }
@@ -614,21 +636,36 @@ final class CodexClient: ObservableObject {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               object["method"] as? String == "account/rateLimits/updated" else { return }
         guard let params = object["params"] as? [String: Any] else {
-            usage = nil
+            setUsage(nil)
             return
         }
         let bucket = ((params["rateLimitsByLimitId"] as? [String: Any])?["codex"] as? [String: Any])
             ?? (params["rateLimits"] as? [String: Any])
         guard let bucket else {
-            usage = nil
+            setUsage(nil)
             return
         }
         let windows = Self.parseWindows(bucket)
         guard !windows.isEmpty else {
-            usage = nil
+            setUsage(nil)
             return
         }
-        usage = UsageSnapshot(fiveHour: windows[300], sevenDay: windows[10080], updatedAt: Date())
+        setUsage(UsageSnapshot(fiveHour: windows[300], sevenDay: windows[10080], updatedAt: Date()))
+    }
+
+    private func setUsage(_ snapshot: UsageSnapshot?) {
+        usageRevision &+= 1
+        usage = snapshot
+        if snapshot != nil {
+            usageAvailability = .available
+        } else {
+            switch connectionState {
+            case .connected: usageAvailability = .unavailable
+            case .disconnected: usageAvailability = .disconnected
+            case .connecting, .reconnecting: usageAvailability = .loading
+            }
+        }
+        onUsageUpdate?(snapshot)
     }
 
     private static func resultObject(_ data: Data) throws -> [String: Any] {

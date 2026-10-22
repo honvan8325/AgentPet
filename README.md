@@ -1,157 +1,80 @@
 # AgentPet
 
-AgentPet is a native macOS menu bar companion for Codex. Its pixel mascots react to observed Codex lifecycle events and display real usage information.
-
-Built with SwiftUI and AppKit. The app includes five energy atlases, 30 animation states, 38 transitions, a transparent floating pet window, and a compact two-bar usage HUD.
+AgentPet is a native macOS menu bar companion for Codex. Its animated Chick sits on the desktop, reflects available Codex usage, and responds to live lifecycle events.
 
 ## Features
 
-- Tracks observed Codex `UserPromptSubmit`, `Stop`, `PermissionRequest`, and `Interrupt` events.
-- Shows a numeric bubble for observed Running sessions.
-- Displays Codex's 5H and 7D remaining usage; the 5H window controls the pet's energy tier.
-- Provides idle activities, hover and click reactions, drag and drop, and a dashboard.
-- Uses Sparkle 2 for signed application updates.
-- Includes a native Swift hook collector; Python is not required.
-
-Task status is evidence based. A historical thread is not considered Running, `Stop` means a turn ended rather than succeeded, and a permission request event does not confirm that approval is still pending. If event continuity is lost, affected live sessions become Unknown.
+- Displays 5-hour and 7-day Codex usage independently. When only weekly usage is available, the pet uses 7-day usage for its energy state and shows the weekly HUD bar.
+- Shows a task bubble only while AgentPet has observed a running Codex session.
+- Animates across energy states, moods, work, idle behavior, and user interactions.
+- Includes a Dashboard for usage, active and recent threads, integration status, and diagnostics.
+- Offers optional notifications for turn events, observed permission requests, and low quota.
+- Preserves screen position and supports configurable pet size, HUD visibility, appearance, motion, and desktop behavior.
 
 ## Requirements
 
-To run AgentPet:
-
 - macOS 14 or later.
-- ChatGPT Desktop with its bundled Codex App Server for Codex integration.
+- ChatGPT Desktop with its bundled Codex CLI for Codex App Server usage and thread metadata.
+- Xcode 16 or later with Swift 6 support to build from source.
 
-To build AgentPet:
+## Install and set up
 
-- Xcode 16 or later with Swift 6 support.
-- Internet access to resolve the Sparkle package.
+1. Download the latest DMG from [GitHub Releases](https://github.com/honvan8325/AgentPet/releases/latest), open it, and move `AgentPet.app` to Applications.
+2. Launch AgentPet and complete the first-run setup.
+3. Enable Codex Integration in the app. AgentPet installs its native hook collector and adds its lifecycle handlers to `~/.codex/hooks.json` while preserving unrelated handlers.
+4. Review and trust AgentPet's handlers in Codex. Reload Codex if requested, then start a new task so AgentPet can observe its events.
+5. Enable notifications in Settings if desired. macOS permission is requested when notifications are enabled.
 
-The distributed app does not require Python, Homebrew, Node.js, Docker, or Xcode.
+AgentPet remains available when Codex is disconnected. Releases are ad hoc signed and are not notarized by Apple. macOS may show a security warning the first time the app is opened; download it from the official release page and allow it only if you trust the source.
 
-## Installation
+## Usage and task status
 
-1. Download the latest `AgentPet-X.Y.Z.dmg` from [GitHub Releases](https://github.com/honvan8325/AgentPet/releases/latest).
-2. Open the DMG and drag `AgentPet.app` to Applications.
-3. Launch AgentPet. Its menu bar icon and floating pet should appear.
+The Dashboard shows available quota windows, reset times when provided, the Codex connection, active tasks, recent threads, hook status, and diagnostics. Use **Reconnect Codex** to restart the App Server connection or **Retry Live Tracking** to resume reading hook events without rewriting the hooks configuration.
 
-AgentPet is distributed with ad-hoc code signing and is not notarized. If macOS blocks the app, open **System Settings → Privacy & Security**, review the AgentPet message, and choose **Open Anyway** when available. You may need to try launching it again. Do not disable Gatekeeper globally.
+Live task status comes from lifecycle events, not from thread history. Tasks that were already running before tracking started may be shown as Unknown. A `Stop` event means a turn ended; it does not indicate whether the turn succeeded. A permission request is an observation and may no longer be pending. The task bubble is hidden when no sessions are confirmed Running.
 
-## First use
-
-1. Select **Enable Codex Integration** from the menu bar, dashboard, or Settings.
-2. Review and trust AgentPet's four lifecycle handlers in ChatGPT Desktop's Codex Hooks interface.
-3. Reload ChatGPT if its hooks interface requests it. AgentPet does not restart ChatGPT.
-4. Submit a new Codex prompt after AgentPet is running.
-
-AgentPet preserves other applications' hook handlers. If an older AgentPet Python command is present, the app offers **Repair Codex Integration** to migrate it to the native collector. **Retry Live Tracking** restarts the event reader without rewriting `~/.codex/hooks.json`.
-
-A task that started before AgentPet began observing events may not appear as active. App Server thread history does not establish live runtime state.
-
-## Menu bar, pet, and dashboard
-
-The menu bar provides:
-
-- Show or hide the pet.
-- Open Dashboard.
-- Enable, disable, repair, or retry Codex integration as appropriate.
-- Launch at Login.
-- Open Settings.
-- Check for Updates.
-- Quit AgentPet.
-
-Drag the pet to move it; its position is saved. Right-click the pet for its context menu. Clicking the pet plays an animation and does not open the dashboard.
-
-The dashboard shows Codex connection status, 5H/7D usage, observed Running sessions, permission request events, recent threads, task status, source, and update time. A row opens its Codex thread only when AgentPet has a validated thread ID. Historical threads are shown with Unknown runtime state.
-
-The compact HUD contains two unlabeled bars. The thought bubble counts observed Running sessions and disappears when the count is zero. Unavailable usage appears as an empty neutral bar rather than 0% remaining.
+The pet's energy uses the 5-hour usage window when available, falling back to the 7-day window. Missing quota is treated as unavailable, not as zero remaining. The HUD shows only available usage windows.
 
 ## Settings
 
-Settings includes:
+Settings lets you choose the mascot and size, show or hide the usage HUD, keep the pet on top or within the visible screen area, reduce motion, pause the pet's animation, select an appearance, configure notifications, launch at login, and manage Codex integration and Sparkle updates. Pet sizes are Small (1.25×), Medium (1.75×), and Large (2.5×). Pausing AgentPet does not pause Codex tasks.
 
-- Pet size, HUD visibility, pause, and appearance.
-- Launch at Login.
-- Current version and Sparkle update controls.
-- Codex integration status and enable/disable/repair/retry actions.
+Only the Chick mascot is currently bundled. Right-click the pet to open the Dashboard or Settings; clicking the pet plays a reaction.
 
-Pausing AgentPet affects its animation only; it does not pause Codex tasks.
+## Asset system
 
-## Mascot Themes
+Chick uses Asset System V3: 88 animation clips, 30 energy and mood variants per clip, individually timed frames, and 308 atlas pages. Each source frame is 64×64 pixels and is rendered at 128×128 with nearest-neighbor scaling. Atlas pages are decoded on demand, with at most eight pages held in memory.
 
-The app includes three mascots: Chick, Coder, and Axolotl. Themes are discovered from valid folders in `AgentPet/Resources/Themes/`; each folder must provide a `manifest.json` and all five energy atlases. Adding a complete theme folder makes it available in Settings without changing Swift code. Chick remains the default mascot. Changing mascots changes appearance and animations without changing Codex integration or task state. Theme archives in `assets/` are source material and are not included in the app until their theme folder is bundled in the app resources.
-
-## Codex integration and privacy
-
-AgentPet finds ChatGPT Desktop through LaunchServices and starts its bundled Codex CLI as an AgentPet-owned App Server subprocess. It reads rate limits, recent thread metadata, and individual thread metadata when needed. It does not infer Running status from thread history or read full conversations.
-
-The native `AgentPetHook` collector is installed at:
-
-```text
-~/Library/Application Support/AgentPet/bin/AgentPetHook
-```
-
-It writes event name, session ID, turn ID, sequence, and timestamp to:
-
-```text
-~/Library/Application Support/AgentPet/events.jsonl
-```
-
-The log is bounded. The collector does not write prompts, responses, transcripts, or source code. A continuity marker records lost events so AgentPet can stop presenting affected sessions as live.
-
-## Updates
-
-Sparkle checks the signed appcast hosted through GitHub Pages and downloads release archives from GitHub Releases. Automatic update checks are enabled by default; automatic downloads are optional. Sparkle verifies update archives with EdDSA. This is separate from Apple's Developer ID signing and notarization.
-
-Use **Check for Updates…** in the menu bar or Settings to check manually. A development build may not have the release feed URL or public key configured.
+The app discovers compatible themes from V3 manifests under `AgentPet/Resources/Themes/`. Chick is the only theme currently included. Runtime assets are kept in `AgentPet/Resources/Themes/chick/`; editable source animation frames and asset-generation tools are not included in this repository or the app bundle.
 
 ## Build from source
 
+Xcode resolves Sparkle through Swift Package Manager, so package resolution requires network access.
+
 ```sh
+xcodebuild \
+  -resolvePackageDependencies \
+  -project AgentPet.xcodeproj \
+  -scheme AgentPet
+
 xcodebuild \
   -project AgentPet.xcodeproj \
   -scheme AgentPet \
   -configuration Debug \
-  -destination 'generic/platform=macOS' \
   CODE_SIGN_IDENTITY=- \
   build
 ```
 
-The project has two targets: the macOS app and the native `AgentPetHook` helper. Sparkle is resolved through Swift Package Manager.
+The Xcode project builds the macOS app and the native `AgentPetHook` helper.
 
-Theme resources are organized as `AgentPet/PetTheme.swift`, `AgentPet/Resources/Shared/`, and one folder per mascot under `AgentPet/Resources/Themes/`.
+## Releases
 
-## GitHub releases
+Pushing a semantic version tag in the form `vMAJOR.MINOR.PATCH` starts the GitHub Actions release workflow. It validates the Chick V3 resources, builds an Apple silicon app, creates a DMG, a Sparkle ZIP, and SHA-256 checksums, then publishes the GitHub Release and Sparkle appcast.
 
-The workflow at `.github/workflows/release.yml` runs only for version tags matching `v*` and validates semantic version tags before building. A release packages:
+The workflow requires the `SPARKLE_PRIVATE_KEY` repository secret and a matching `SPARKLE_PUBLIC_ED_KEY` repository variable. Sparkle's EdDSA update signature is separate from Apple's code signing. Release builds use ad hoc signing and are not notarized.
 
-- `AgentPet-X.Y.Z.dmg` for initial installation.
-- `AgentPet-X.Y.Z.zip` for Sparkle.
-- `SHA256SUMS.txt`.
+## Privacy
 
-It signs and verifies the Sparkle appcast, publishes the GitHub Release, and deploys `appcast.xml` through GitHub Pages. Repository Actions configuration requires the `SPARKLE_PRIVATE_KEY` secret and matching `SPARKLE_PUBLIC_ED_KEY` variable. Keep the private key out of the repository and CI logs. Published tags and release archives should remain immutable.
+AgentPet starts the Codex App Server bundled with ChatGPT Desktop and reads usage and thread metadata. Its native hook collector records lifecycle event names, session IDs, turn IDs, sequence numbers, and timestamps in `~/Library/Application Support/AgentPet/events.jsonl`. It does not record prompts, responses, transcripts, or source code. Diagnostics omit session identifiers and conversation content.
 
-## Troubleshooting
-
-**Live tracking is configured but no event has arrived:** trust the handlers in Codex, reload ChatGPT if requested, and submit a new prompt after AgentPet starts.
-
-**Integration needs repair:** use **Repair Codex Integration** to replace recognized legacy or partial AgentPet handlers while preserving unrelated handlers.
-
-**Reader error with native handlers configured:** use **Retry Live Tracking**. This restarts local log reading without rewriting the hooks configuration.
-
-**Codex is connected but a task is Unknown:** connection and lifecycle tracking are separate. Historical thread metadata cannot establish current runtime state.
-
-**Usage is unavailable:** ensure ChatGPT Desktop and its bundled Codex App Server are available, then refresh the dashboard. AgentPet clears quota data it can no longer confirm.
-
-**GitHub Pages rejects a release deployment:** check the `github-pages` environment's deployment rules for version tags. This is a repository configuration issue, not a reason to replace the Sparkle keypair.
-
-## Uninstall
-
-1. Disable Codex Integration in the menu bar, dashboard, or Settings.
-2. Reload ChatGPT if needed to apply its updated hook configuration.
-3. Disable Launch at Login if enabled, quit AgentPet, and remove `AgentPet.app` from Applications.
-4. Optionally delete `~/Library/Application Support/AgentPet/` to remove AgentPet's collector and event log.
-
-## Contributing
-
-Bug reports and pull requests are welcome through [GitHub Issues](https://github.com/honvan8325/AgentPet/issues) and [GitHub Pull Requests](https://github.com/honvan8325/AgentPet/pulls). Include your macOS and AgentPet versions, reproduction steps, and relevant non-sensitive errors. Do not post credentials, signing keys, or private Codex content.
+AgentPet does not infer live task status from historical threads. If event continuity is lost, affected sessions are no longer presented as confirmed live tasks.

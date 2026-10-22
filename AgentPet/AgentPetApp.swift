@@ -6,13 +6,23 @@ import SwiftUI
 
 enum PetSize: String, CaseIterable, Identifiable, Hashable {
     case small, medium, large
+
     var id: String { rawValue }
-    var title: String { rawValue.capitalized }
-    var pixelScale: Int {
+
+    var title: String {
+        rawValue.capitalized
+    }
+
+    var pixelScale: Double {
         switch self {
-        case .small: 1
-        case .medium: 2
-        case .large: 3
+        case .small:
+            return 1.25
+
+        case .medium:
+            return 1.75
+
+        case .large:
+            return 2.5
         }
     }
 }
@@ -34,6 +44,9 @@ final class AgentPetModel: ObservableObject {
     let codex = CodexClient()
     let sessions = SessionStore()
     let hooks = HookIntegration()
+    let notificationManager = NotificationManager()
+    let animationPlayer = AnimationPlayer()
+    lazy var behaviorEngine = PetBehaviorEngine(player: animationPlayer)
     let updaterController: SPUStandardUpdaterController?
 
     init() {
@@ -52,9 +65,9 @@ final class AgentPetModel: ObservableObject {
 
         let savedThemeID = UserDefaults.standard.string(forKey: "selectedTheme")
         let savedTheme = PetTheme.available.first { $0.id == savedThemeID } ?? PetTheme.defaultTheme
-        if SpriteAssets.shared.selectTheme(savedTheme) {
+        if SpriteAtlasStore.shared.selectTheme(savedTheme) {
             selectedTheme = savedTheme
-        } else if let activeTheme = SpriteAssets.shared.activeTheme {
+        } else if let activeTheme = SpriteAtlasStore.shared.activeTheme {
             selectedTheme = activeTheme
         } else {
             selectedTheme = PetTheme.defaultTheme
@@ -78,6 +91,16 @@ final class AgentPetModel: ObservableObject {
     @Published var isPetPaused = AgentPetModel.preference("isPetPaused", default: false) {
         didSet { UserDefaults.standard.set(isPetPaused, forKey: "isPetPaused") }
     }
+    @Published var alwaysOnTop = AgentPetModel.preference("alwaysOnTop", default: true) {
+        didSet { UserDefaults.standard.set(alwaysOnTop, forKey: "alwaysOnTop"); onPetLayoutChange?() }
+    }
+    @Published var keepFullyVisible = AgentPetModel.preference("keepFullyVisible", default: true) {
+        didSet { UserDefaults.standard.set(keepFullyVisible, forKey: "keepFullyVisible"); onPetLayoutChange?() }
+    }
+    @Published var reduceMotion = AgentPetModel.preference("reduceMotion", default: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion) {
+        didSet { UserDefaults.standard.set(reduceMotion, forKey: "reduceMotion") }
+    }
+    @Published var isPetDragging = false
     @Published var appearance: AppearanceMode = AgentPetModel.preference("appearance", default: .system) {
         didSet { UserDefaults.standard.set(appearance.rawValue, forKey: "appearance") }
     }
@@ -93,6 +116,7 @@ final class AgentPetModel: ObservableObject {
     var onPetWillTerminate: (() -> Void)?
 
     private var connectionTask: Task<Void, Never>?
+    private var reconnectTask: Task<Void, Never>?
     private var hasConnected = false
     private var isRefreshing = false
 
@@ -118,6 +142,38 @@ final class AgentPetModel: ObservableObject {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
     }
 
+    var didCompleteOnboarding: Bool {
+        UserDefaults.standard.bool(forKey: "didCompleteOnboarding")
+    }
+
+    var latestDiagnosticError: String {
+        if codex.errorMessage != nil {
+            return "Codex reported an error; detailed text is omitted for privacy."
+        } else if hooks.errorMessage != nil {
+            return "Codex hook integration reported an error; detailed text is omitted for privacy."
+        } else if settingsError != nil {
+            return "A settings action reported an error; detailed text is omitted for privacy."
+        } else if SpriteAtlasStore.shared.diagnosticMessage != nil {
+            return "Pet asset loading reported an error."
+        }
+        return "none"
+    }
+
+    var diagnosticsText: String {
+        let windows = codex.usage?.availableWindows.map { "\($0.label): \(Int($0.remaining.rounded(.down)))%" }.joined(separator: ", ") ?? "none"
+        let updated = codex.usage?.updatedAt.formatted(date: .abbreviated, time: .shortened) ?? "not available"
+        return [
+            "AgentPet \(currentVersion)",
+            "Codex connection: \(connectionTitle)",
+            "Usage availability: \(codex.usageAvailability.rawValue)",
+            "Available usage windows: \(windows)",
+            "Usage updated: \(updated)",
+            "Hook integration: \(hooks.state.title)",
+            "Tracking: \(sessions.runningCount) running, \(sessions.needsInputCount) permission requests observed",
+            "Latest error: \(latestDiagnosticError)"
+        ].joined(separator: "\n")
+    }
+
     var canAutomaticallyDownloadUpdates: Bool {
         updaterController?.updater.allowsAutomaticUpdates ?? false
     }
@@ -129,6 +185,10 @@ final class AgentPetModel: ObservableObject {
     }
 
     func start() {
+        codex.onUsageUpdate = { [weak self] snapshot in
+            self?.notificationManager.usageChanged(snapshot)
+            self?.onPetLayoutChange?()
+        }
         hooks.start(
             onEvent: { [weak self] event in self?.receive(event) },
             onTrackingUnavailable: { [weak self] in self?.sessions.invalidateRuntime() }
@@ -155,13 +215,33 @@ final class AgentPetModel: ObservableObject {
 
     func selectTheme(_ theme: PetTheme) {
         guard theme != selectedTheme else { return }
-        guard SpriteAssets.shared.selectTheme(theme) else {
+        guard SpriteAtlasStore.shared.selectTheme(theme) else {
             settingsError = "Unable to load the selected mascot."
             return
         }
         selectedTheme = theme
         UserDefaults.standard.set(theme.id, forKey: "selectedTheme")
         settingsError = nil
+        onPetLayoutChange?()
+    }
+
+    func reconnectCodex() {
+        guard reconnectTask == nil else { return }
+        connectionTask?.cancel()
+        connectionTask = nil
+        sessions.invalidateRuntime()
+        sessions.updateThreads([])
+        reconnectTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { reconnectTask = nil }
+            await codex.prepareReconnect()
+            guard !Task.isCancelled else { return }
+            connectionTask = Task { await runConnectionLoop() }
+        }
+    }
+
+    func completeOnboarding() {
+        UserDefaults.standard.set(true, forKey: "didCompleteOnboarding")
     }
 
     func openThread(_ id: String?) {
@@ -212,8 +292,11 @@ final class AgentPetModel: ObservableObject {
     }
 
     func shutdown() async {
+        reconnectTask?.cancel()
+        reconnectTask = nil
         connectionTask?.cancel()
         connectionTask = nil
+        behaviorEngine.stop()
         onPetWillTerminate?()
         hooks.stop()
         await codex.shutdown()
@@ -221,6 +304,7 @@ final class AgentPetModel: ObservableObject {
 
     private func receive(_ event: SessionEvent) {
         guard sessions.apply(event), let sessionID = event.sessionID else { return }
+        notificationManager.receive(event)
 
         if event.event == "UserPromptSubmit" {
             Task { [weak self] in
@@ -250,6 +334,7 @@ final class AgentPetModel: ObservableObject {
                 }
                 backoff = 2
             } catch {
+                guard !Task.isCancelled else { break }
                 hasConnected = true
                 codex.markReconnecting(error)
             }
@@ -279,7 +364,7 @@ struct AgentPetApp: App {
     var body: some Scene {
         Settings {
             SettingsView(model: appDelegate.model)
-                .frame(width: 420, height: 500)
+                .frame(width: 440, height: 680)
         }
     }
 }
@@ -291,6 +376,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var pet: PetPanelController!
     private var dashboard: DashboardWindowController!
     private var settings: SettingsWindowController!
+    private var onboarding: OnboardingWindowController!
     private var terminationPending = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -298,6 +384,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pet = PetPanelController(model: model)
         dashboard = DashboardWindowController(model: model)
         settings = SettingsWindowController(model: model)
+        onboarding = OnboardingWindowController(model: model)
         model.onOpenDashboard = { [weak self] in self?.dashboard.show() }
         model.onOpenSettings = { [weak self] in self?.settings.show() }
         model.onHidePet = { [weak self] in self?.pet.hide() }
@@ -314,6 +401,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu?.delegate = self
         pet.show()
         model.start()
+        if !model.didCompleteOnboarding { onboarding.show() }
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -324,6 +412,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(item("Show / Hide Pet", #selector(togglePet(_:))))
         menu.addItem(item("Open Dashboard", #selector(openDashboard(_:))))
+        menu.addItem(item("Reconnect Codex", #selector(reconnectCodex(_:))))
         menu.addItem(item(model.integrationActionTitle, #selector(toggleIntegration(_:))))
         let login = item("Launch at Login", #selector(toggleLaunchAtLogin(_:)))
         login.state = model.launchAtLoginEnabled ? .on : .off
@@ -353,6 +442,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func togglePet(_ sender: Any?) { pet.toggle() }
     @objc private func openDashboard(_ sender: Any?) { dashboard.show() }
+    @objc private func reconnectCodex(_ sender: Any?) { model.reconnectCodex() }
     @objc private func toggleIntegration(_ sender: Any?) { model.toggleIntegration() }
     @objc private func toggleLaunchAtLogin(_ sender: Any?) { model.setLaunchAtLogin(!model.launchAtLoginEnabled) }
     @objc private func openSettings(_ sender: Any?) { settings.show() }
