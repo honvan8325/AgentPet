@@ -15,6 +15,7 @@ final class PetPanelController: NSObject, NSWindowDelegate {
             includesHUD: model.showUsageHUD && !(model.codex.usage?.availableWindows.isEmpty ?? true),
             hudWindowCount: model.codex.usage?.availableWindows.count ?? 0,
             bubbleSize: SpriteAtlasStore.shared.bubblePixelSize,
+            chatGPTEnabled: model.chatGPTWeb.isEnabled,
             zoom: CGFloat(model.petScale)
         )
         panel = NSPanel(
@@ -128,6 +129,7 @@ final class PetPanelController: NSObject, NSWindowDelegate {
             includesHUD: hasVisibleHUD,
             hudWindowCount: model.codex.usage?.availableWindows.count ?? 0,
             bubbleSize: SpriteAtlasStore.shared.bubblePixelSize,
+            chatGPTEnabled: model.chatGPTWeb.isEnabled,
             zoom: CGFloat(model.petScale)
         )
     }

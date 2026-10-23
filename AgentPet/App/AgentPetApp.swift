@@ -3,6 +3,7 @@ import Combine
 import ServiceManagement
 import Sparkle
 import SwiftUI
+import UserNotifications
 
 enum PetSize: String, CaseIterable, Identifiable, Hashable {
     case small, medium, large, custom
@@ -47,6 +48,7 @@ final class AgentPetModel: ObservableObject {
     let codex = CodexClient()
     let sessions = SessionStore()
     let hooks = HookIntegration()
+    let chatGPTWeb = ChatGPTWebConnector()
     let notificationManager = NotificationManager()
     let animationPlayer = AnimationPlayer()
     lazy var behaviorEngine = PetBehaviorEngine(player: animationPlayer)
@@ -115,6 +117,8 @@ final class AgentPetModel: ObservableObject {
     }
     @Published private(set) var launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
     @Published private(set) var settingsError: String?
+    @Published private(set) var chatGPTDashboardRequest = 0
+    @Published private(set) var chatGPTCompletionRevision = 0
 
     var onPetSizeChange: (() -> Void)?
     var onPetLayoutChange: (() -> Void)?
@@ -211,6 +215,23 @@ final class AgentPetModel: ObservableObject {
         )
         guard connectionTask == nil else { return }
         connectionTask = Task { [weak self] in await self?.runConnectionLoop() }
+        chatGPTWeb.onEnabledChange = { [weak self] in self?.onPetLayoutChange?() }
+        chatGPTWeb.onShowDashboard = { [weak self] in
+            guard let self else { return }
+            chatGPTDashboardRequest &+= 1
+            openDashboard()
+        }
+        chatGPTWeb.onGenerationEnded = { [weak self] tabID, generationID, chatTitle, elapsedSeconds in
+            guard let self else { return }
+            notificationManager.chatGPTGenerationEnded(
+                tabID: tabID,
+                generationID: generationID,
+                chatTitle: chatTitle,
+                elapsedSeconds: elapsedSeconds
+            )
+            chatGPTCompletionRevision &+= 1
+        }
+        chatGPTWeb.start()
     }
 
     func refreshNow() async {
@@ -260,11 +281,12 @@ final class AgentPetModel: ObservableObject {
         UserDefaults.standard.set(true, forKey: "didCompleteOnboarding")
     }
 
-    func openThread(_ id: String?) {
+    @discardableResult
+    func openThread(_ id: String?) -> Bool {
         guard let id, !id.isEmpty,
               id.unicodeScalars.allSatisfy({ CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-").contains($0) }),
-              let url = URL(string: "codex://threads/\(id)") else { return }
-        NSWorkspace.shared.open(url)
+              let url = URL(string: "codex://threads/\(id)") else { return false }
+        return NSWorkspace.shared.open(url)
     }
 
     func toggleIntegration() {
@@ -308,6 +330,7 @@ final class AgentPetModel: ObservableObject {
     }
 
     func shutdown() async {
+        chatGPTWeb.stop()
         reconnectTask?.cancel()
         reconnectTask = nil
         connectionTask?.cancel()
@@ -320,8 +343,15 @@ final class AgentPetModel: ObservableObject {
 
     private func receive(_ event: SessionEvent) {
         guard sessions.apply(event), let sessionID = event.sessionID else { return }
-        notificationManager.receive(event)
-
+        let session = sessions.sessions[sessionID]
+        let elapsedSeconds: TimeInterval?
+        if (event.event == "Stop" || event.event == "Interrupt"),
+           let startedAt = session?.startedAt {
+            let elapsed = event.timestamp - startedAt.timeIntervalSince1970
+            elapsedSeconds = elapsed >= 0 && elapsed <= 604_800 ? elapsed : nil
+        } else {
+            elapsedSeconds = nil
+        }
         if event.event == "UserPromptSubmit" {
             Task { [weak self] in
                 guard let self else { return }
@@ -330,6 +360,75 @@ final class AgentPetModel: ObservableObject {
                 }
             }
         }
+
+        if ["Stop", "Interrupt", "PermissionRequest"].contains(event.event) {
+            notifyAcceptedCodexEvent(event, sessionID: sessionID, elapsedSeconds: elapsedSeconds)
+        } else {
+            notificationManager.receive(
+                event,
+                chatTitle: session?.title,
+                threadID: session?.threadID,
+                elapsedSeconds: elapsedSeconds
+            )
+        }
+    }
+
+    private func notifyAcceptedCodexEvent(
+        _ event: SessionEvent,
+        sessionID: String,
+        elapsedSeconds: TimeInterval?
+    ) {
+        let acceptedSession = sessions.sessions[sessionID]
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+
+            if self.meaningfulCodexTitle(acceptedSession?.title) == nil {
+                let lookupID = acceptedSession?.threadID ?? sessionID
+
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+
+                    if let metadata = await self.codex.findThreadMetadata(
+                        lookupID,
+                        refreshIfPlaceholder: true
+                    ) {
+                        self.sessions.mapThread(
+                            sessionID: sessionID,
+                            to: metadata
+                        )
+                    }
+                }
+
+                try? await Task.sleep(for: .milliseconds(1500))
+            }
+
+            let latest = self.sessions.sessions[sessionID]
+            let selectedSession = latest?.turnID == event.turnID
+                ? latest
+                : acceptedSession
+
+            self.notificationManager.receive(
+                event,
+                chatTitle: self.meaningfulCodexTitle(selectedSession?.title),
+                threadID: selectedSession?.threadID,
+                elapsedSeconds: elapsedSeconds
+            )
+        }
+    }
+
+    private func meaningfulCodexTitle(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+
+        let title = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return nil }
+
+        let placeholders: Set<String> = [
+            "untitled thread",
+            "codex session"
+        ]
+        guard !placeholders.contains(title.lowercased()) else { return nil }
+        return title
     }
 
     private func runConnectionLoop() async {
@@ -392,6 +491,12 @@ struct AgentPetApp: App {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+    private struct PendingNotificationTarget {
+        let source: String?
+        let threadID: String?
+        let tabID: Int?
+    }
+
     let model = AgentPetModel()
     private var statusItem: NSStatusItem!
     private var pet: PetPanelController!
@@ -399,6 +504,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var settings: SettingsWindowController!
     private var onboarding: OnboardingWindowController!
     private var terminationPending = false
+    private var pendingNotificationTarget: PendingNotificationTarget?
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        UNUserNotificationCenter.current().delegate = self
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -422,7 +532,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu?.delegate = self
         pet.show()
         model.start()
+        if let target = pendingNotificationTarget {
+            pendingNotificationTarget = nil
+            handleNotificationOpen(source: target.source, threadID: target.threadID, tabID: target.tabID)
+        }
         if !model.didCompleteOnboarding { onboarding.show() }
+    }
+
+    func handleNotificationOpen(source: String?, threadID: String?, tabID: Int?) {
+        guard dashboard != nil else {
+            pendingNotificationTarget = PendingNotificationTarget(source: source, threadID: threadID, tabID: tabID)
+            return
+        }
+
+        switch source {
+        case "codex":
+            if !model.openThread(threadID) { dashboard.show() }
+        case "chatgpt_web":
+            if let tabID,
+               model.chatGPTWeb.connectionState == .connected,
+               model.chatGPTWeb.tabs[tabID] != nil {
+                model.chatGPTWeb.openTab(tabID)
+            } else {
+                dashboard.show()
+            }
+        default:
+            dashboard.show()
+        }
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -473,5 +609,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
         return item
+    }
+}
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+
+        let info = response.notification.request.content.userInfo
+        let source = info["agentpet.source"] as? String
+        let threadID = info["agentpet.threadID"] as? String
+        let tabID = info["agentpet.tabID"] as? Int
+
+        await MainActor.run {
+            self.handleNotificationOpen(source: source, threadID: threadID, tabID: tabID)
+        }
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]
     }
 }

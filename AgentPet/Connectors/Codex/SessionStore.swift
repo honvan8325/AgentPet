@@ -61,11 +61,13 @@ struct SessionState: Hashable {
     var turnID: String
     var status: TaskStatus
     var updatedAt: Date
+    var startedAt: Date?
 }
 
 struct CodexThread: Identifiable, Hashable {
     let id: String
     var title: String
+    var sessionID: String?
     var source: String?
     var createdAt: Date?
     var updatedAt: Date?
@@ -80,6 +82,7 @@ struct DashboardTask: Identifiable {
     let source: String?
     let isLive: Bool
     let isHistorical: Bool
+    let startedAt: Date?
 }
 
 @MainActor
@@ -114,8 +117,18 @@ final class SessionStore: ObservableObject {
         self.threads = threads
         let byID = Dictionary(uniqueKeysWithValues: threads.map { ($0.id, $0) })
         for (sessionID, var session) in sessions {
-            let verifiedID = session.threadID ?? sessionID
-            guard let thread = byID[verifiedID] else { continue }
+            let thread: CodexThread?
+
+            if let verifiedThreadID = session.threadID {
+                thread = byID[verifiedThreadID]
+            } else {
+                let matches = threads.filter {
+                    $0.id == sessionID || $0.sessionID == sessionID
+                }
+                thread = matches.count == 1 ? matches.first : nil
+            }
+
+            guard let thread else { continue }
             session.threadID = thread.id
             session.title = thread.title
             sessions[sessionID] = session
@@ -130,8 +143,14 @@ final class SessionStore: ObservableObject {
     }
 
     func mapThread(sessionID: String, to thread: CodexThread) {
-        guard var session = sessions[sessionID],
-              thread.id == (session.threadID ?? sessionID) else { return }
+        guard var session = sessions[sessionID] else { return }
+
+        if let verifiedThreadID = session.threadID {
+            guard thread.id == verifiedThreadID else { return }
+        } else {
+            guard thread.id == sessionID || thread.sessionID == sessionID else { return }
+        }
+
         session.threadID = thread.id
         session.title = thread.title
         sessions[sessionID] = session
@@ -199,7 +218,8 @@ final class SessionStore: ObservableObject {
                 title: current?.title,
                 turnID: turnID,
                 status: .running,
-                updatedAt: date
+                updatedAt: date,
+                startedAt: date
             )
             uncertainSessionIDs.remove(sessionID)
 
@@ -225,7 +245,8 @@ final class SessionStore: ObservableObject {
                 title: current?.title,
                 turnID: turnID,
                 status: .needsInput,
-                updatedAt: date
+                updatedAt: date,
+                startedAt: current?.turnID == turnID ? current?.startedAt : nil
             )
 
         case "Stop", "Interrupt":
@@ -252,7 +273,8 @@ final class SessionStore: ObservableObject {
                 title: current?.title,
                 turnID: turnID,
                 status: next,
-                updatedAt: date
+                updatedAt: date,
+                startedAt: current?.startedAt
             )
             uncertainSessionIDs.remove(sessionID)
 
@@ -330,7 +352,8 @@ final class SessionStore: ObservableObject {
                 threadID: session.threadID,
                 source: thread?.source,
                 isLive: session.status == .running,
-                isHistorical: false
+                isHistorical: false,
+                startedAt: session.startedAt
             )
         }
         let sessionThreadIDs = Set(sessionTasks.compactMap(\.threadID))
@@ -345,7 +368,8 @@ final class SessionStore: ObservableObject {
                     threadID: $0.id,
                     source: $0.source,
                     isLive: false,
-                    isHistorical: true
+                    isHistorical: true,
+                    startedAt: nil
                 )
             }
         let sorted = (sessionTasks + recent).sorted {

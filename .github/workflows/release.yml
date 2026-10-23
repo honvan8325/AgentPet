@@ -118,6 +118,13 @@ jobs:
           test -d "$APP"
           test -x "$APP/Contents/MacOS/AgentPet"
           test -x "$HELPER"
+          WEB_HELPER="$APP/Contents/Helpers/AgentPetWebBridge"
+          test -x "$WEB_HELPER"
+          test "$(lipo -archs "$WEB_HELPER")" = "arm64"
+          EXTENSION="$APP/Contents/Resources/BrowserExtension/ChatGPTWeb"
+          test -s "$EXTENSION/manifest.json"
+          test -s "$EXTENSION/content.js"
+          test -s "$EXTENSION/background.js"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")" = "com.agentpet.app"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")" = "$VERSION"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")" = "$VERSION"
@@ -144,6 +151,7 @@ jobs:
           test -d "$APP/Contents/Frameworks/Sparkle.framework"
           test "$(lipo -archs "$HELPER")" = "arm64"
           codesign --verify --strict "$APP"
+          codesign --verify --strict "$WEB_HELPER"
           codesign --verify --strict "$APP/Contents/Frameworks/Sparkle.framework"
 
       - name: Create DMG, ZIP, and checksums

@@ -2,7 +2,7 @@ import Combine
 import Foundation
 
 enum PetActivity: Equatable {
-    case idle, working, waiting
+    case idle, working, webThinking, waiting
     case disconnected, reconnecting, syncing, paused, unknown
 }
 
@@ -20,6 +20,7 @@ struct PetBehaviorContext: Equatable {
     let eventRevision: Int
     let lifecycleEvent: String?
     let lifecycleTransition: String?
+    let chatGPTCompletionRevision: Int
 }
 
 @MainActor
@@ -117,6 +118,9 @@ final class PetBehaviorEngine: ObservableObject {
            next.lifecycleTransition == "interrupt" {
             cancelActivity()
             playSequence(["status.interrupted", target], fallback: target)
+            if !next.reduceMotion {
+                player.playEffect("sweat")
+            }
             return
         }
         if !next.isPaused, newEvent, next.lifecycleEvent == "Stop",
@@ -137,6 +141,30 @@ final class PetBehaviorEngine: ObservableObject {
             }
             sequence.append(target)
             playSequence(sequence, fallback: target)
+            if !next.reduceMotion {
+                player.playEffect("breath")
+            }
+            return
+        }
+
+        if let previous,
+           previous.chatGPTCompletionRevision != next.chatGPTCompletionRevision,
+           !next.isPaused,
+           !next.isDragging,
+           !next.reduceMotion,
+           next.runningCount == 0,
+           next.activity == .idle {
+            cancelActivity()
+
+            let target = baseClip(for: next.activity)
+            let reaction = "react.small_hop"
+
+            playSequence(
+                transitionSequence(from: visualState, to: reaction) + [target],
+                fallback: target
+            )
+
+            player.playEffect("sparkle")
             return
         }
 
@@ -307,6 +335,7 @@ final class PetBehaviorEngine: ObservableObject {
         switch activity {
         case .idle: role("idle", fallback: "idle.breathe")
         case .working: role("working", fallback: "work.typing")
+        case .webThinking: role("thinking", fallback: "work.thinking")
         case .waiting: role("unknown", fallback: "status.unknown")
         case .disconnected: role("disconnected", fallback: "status.disconnected")
         case .reconnecting: role("reconnecting", fallback: "status.reconnecting")

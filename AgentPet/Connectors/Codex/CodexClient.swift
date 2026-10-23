@@ -489,10 +489,11 @@ final class CodexClient: ObservableObject {
             consecutiveTimeouts = 0
             let result = try Self.resultObject(data)
             let row = (result["thread"] as? [String: Any]) ?? result
-            guard let metadata = Self.parseThread(row), metadata.id == id else {
+            guard let metadata = Self.parseThread(row),
+                  metadata.id == id || metadata.sessionID == id else {
                 return MetadataLookupResult(thread: nil, isConfirmedMiss: true)
             }
-            merge([metadata], preserving: [id])
+            merge([metadata], preserving: [metadata.id])
             return MetadataLookupResult(thread: metadata, isConfirmedMiss: false)
         } catch {
             if generation == connectionGeneration { handleRequestError(error) }
@@ -500,10 +501,33 @@ final class CodexClient: ObservableObject {
         }
     }
 
-    func findThreadMetadata(_ id: String) async -> CodexThread? {
+    private static func isPlaceholderTitle(_ title: String) -> Bool {
+        let value = title
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        return value.isEmpty ||
+            value == "untitled thread" ||
+            value == "codex session"
+    }
+
+    func findThreadMetadata(
+        _ id: String,
+        refreshIfPlaceholder: Bool = false
+    ) async -> CodexThread? {
         guard connectionState == .connected else { return nil }
         let generation = connectionGeneration
-        if let cached = threads.first(where: { $0.id == id }) { return cached }
+        if let cached = threads.first(where: { $0.id == id }),
+           !refreshIfPlaceholder || !Self.isPlaceholderTitle(cached.title) {
+            return cached
+        }
+        let sessionMatches = threads.filter { $0.sessionID == id }
+        if sessionMatches.count == 1,
+           let cached = sessionMatches.first,
+           !refreshIfPlaceholder || !Self.isPlaceholderTitle(cached.title) {
+            return cached
+        }
+        if sessionMatches.count > 1 { return nil }
         if let lookup = metadataLookups[id] {
             let thread = await lookup.task.value.thread
             return generation == connectionGeneration ? thread : nil
@@ -708,11 +732,26 @@ final class CodexClient: ObservableObject {
         return windows
     }
 
+    private static func cleanedThreadLabel(_ value: Any?, limit: Int = 120) -> String? {
+        guard let raw = value as? String else { return nil }
+
+        let cleaned = raw
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !cleaned.isEmpty else { return nil }
+        return String(cleaned.prefix(limit))
+    }
+
     private static func parseThread(_ row: [String: Any]) -> CodexThread? {
         guard let id = row["id"] as? String, !id.isEmpty else { return nil }
+        let explicitName = cleanedThreadLabel(row["name"])
+            ?? cleanedThreadLabel(row["title"])
+        let preview = cleanedThreadLabel(row["preview"], limit: 100)
         return CodexThread(
             id: id,
-            title: (row["name"] as? String) ?? (row["title"] as? String) ?? "Untitled thread",
+            title: explicitName ?? preview ?? "Untitled thread",
+            sessionID: row["sessionId"] as? String,
             source: row["source"] as? String,
             createdAt: parseDate(row["createdAt"]),
             updatedAt: parseDate(row["updatedAt"])

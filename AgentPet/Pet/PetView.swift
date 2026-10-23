@@ -6,9 +6,11 @@ struct PetView: View {
     @ObservedObject var model: AgentPetModel
     @ObservedObject private var sessions: SessionStore
     @ObservedObject private var codex: CodexClient
+    @ObservedObject private var chatGPTWeb: ChatGPTWebConnector
     @ObservedObject private var assets: SpriteAtlasStore
     @ObservedObject private var player: AnimationPlayer
     private let engine: PetBehaviorEngine
+
     @State private var isHovering = false
     @State private var isDragging = false
     @State private var effectTask: Task<Void, Never>?
@@ -17,13 +19,14 @@ struct PetView: View {
         self.model = model
         _sessions = ObservedObject(wrappedValue: model.sessions)
         _codex = ObservedObject(wrappedValue: model.codex)
+        _chatGPTWeb = ObservedObject(wrappedValue: model.chatGPTWeb)
         _assets = ObservedObject(wrappedValue: .shared)
         _player = ObservedObject(wrappedValue: model.animationPlayer)
         engine = model.behaviorEngine
     }
 
     private var behaviorContext: PetBehaviorContext {
-        let activity: PetActivity
+        var activity: PetActivity
         switch model.petState {
         case .idle: activity = .idle
         case .typing: activity = .working
@@ -34,8 +37,14 @@ struct PetView: View {
         case .reconnecting: activity = .reconnecting
         case .paused: activity = .paused
         }
+        let mayShowWebThinking = !model.isPetPaused && !isDragging &&
+            sessions.runningCount == 0 && sessions.needsInputCount == 0 &&
+            chatGPTWeb.generatingCount > 0 &&
+            (activity == .idle || activity == .unknown || activity == .disconnected)
+        if mayShowWebThinking { activity = .webThinking }
         let mood: PetMood
         switch activity {
+        case .webThinking: mood = .curious
         case .waiting, .disconnected, .reconnecting, .unknown: mood = .worried
         default: mood = isHovering ? .curious : (sessions.runningCount > 0 ? .happy : .neutral)
         }
@@ -52,7 +61,8 @@ struct PetView: View {
             themeID: model.selectedTheme.id,
             eventRevision: sessions.lastChange?.revision ?? 0,
             lifecycleEvent: sessions.lastChange?.event,
-            lifecycleTransition: sessions.lastChange?.transition
+            lifecycleTransition: sessions.lastChange?.transition,
+            chatGPTCompletionRevision: model.chatGPTCompletionRevision
         )
     }
 
@@ -63,6 +73,7 @@ struct PetView: View {
             includesHUD: hasVisibleHUD,
             hudWindowCount: codex.usage?.availableWindows.count ?? 0,
             bubbleSize: assets.bubblePixelSize,
+            chatGPTEnabled: chatGPTWeb.isEnabled,
             zoom: CGFloat(model.petScale)
         )
     }
@@ -97,32 +108,6 @@ struct PetView: View {
                             .offset(x: scene.spriteOrigin.x * scene.zoom, y: scene.spriteOrigin.y * scene.zoom)
                     }
 
-                    if model.showUsageHUD, let snapshot = codex.usage, !snapshot.availableWindows.isEmpty {
-                        PixelHUDView(snapshot: snapshot, manifest: manifest, assets: assets, scale: scene.zoom)
-                            .offset(x: scene.hudOrigin.x * scene.zoom, y: scene.hudOrigin.y * scene.zoom)
-                    }
-
-                    if sessions.runningCount > 0, let bubble = assets.hudImage("bubble") {
-                        let bubbleWidth = scene.bubbleWidth * scene.zoom
-                        let bubbleHeight = scene.bubbleHeight * scene.zoom
-                        ZStack(alignment: .top) {
-                            Image(nsImage: bubble)
-                                .resizable()
-                                .interpolation(.none)
-                                .frame(width: bubbleWidth, height: bubbleHeight)
-                            PixelCountView(count: sessions.runningCount, scale: scene.zoom, assets: assets)
-                                .frame(
-                                    width: bubbleWidth,
-                                    height: bubbleHeight * 0.76,
-                                    alignment: .center
-                                )
-                        }
-                        .frame(width: bubbleWidth, height: bubbleHeight)
-                        .offset(x: scene.bubbleOrigin.x * scene.zoom, y: scene.bubbleOrigin.y * scene.zoom)
-                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                        .animation(model.reduceMotion ? nil : .easeOut(duration: 0.15), value: sessions.runningCount > 0)
-                    }
-
                     if let effect = player.effect, let effectMetadata = manifest?.effects[effect.name] {
                         let elapsed = timeline.date.timeIntervalSince(effect.startedAt)
                         let index = min(effectMetadata.frames - 1, max(0, Int(elapsed / 0.1)))
@@ -154,8 +139,42 @@ struct PetView: View {
                         x: (scene.spriteOrigin.x + scene.canvasWidth * 0.09) * scene.zoom,
                         y: scene.spriteOrigin.y * scene.zoom
                     )
+
+                    if model.showUsageHUD, let snapshot = codex.usage, !snapshot.availableWindows.isEmpty {
+                        PixelHUDView(snapshot: snapshot, manifest: manifest, assets: assets, scale: scene.zoom)
+                            .offset(x: scene.hudOrigin.x * scene.zoom, y: scene.hudOrigin.y * scene.zoom)
+                    }
+
                 }
                 .frame(width: scene.width * scene.zoom, height: scene.height * scene.zoom, alignment: .topLeading)
+            }
+
+            if let bubble = assets.hudImage("bubble") {
+                if sessions.runningCount > 0 {
+                    Button { model.openDashboard() } label: {
+                        ConnectorBubbleView(count: sessions.runningCount, bubble: bubble,
+                                            zoom: scene.zoom, assets: assets)
+                    }
+                    .buttonStyle(.plain)
+                    .zIndex(1)
+                    .offset(x: scene.bubbleOrigin.x * scene.zoom, y: scene.bubbleOrigin.y * scene.zoom)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                    .animation(model.reduceMotion ? nil : .easeOut(duration: 0.15), value: sessions.runningCount > 0)
+                    .accessibilityLabel("Codex: \(sessions.runningCount) running")
+                }
+                if chatGPTWeb.generatingCount > 0 {
+                    let origin = sessions.runningCount > 0 ? scene.chatGPTBubbleOrigin : scene.bubbleOrigin
+                    Button { chatGPTWeb.openActiveChatGPT() } label: {
+                        ConnectorBubbleView(count: chatGPTWeb.generatingCount, bubble: bubble,
+                                            zoom: scene.zoom, assets: assets)
+                    }
+                    .buttonStyle(.plain)
+                    .zIndex(1)
+                    .offset(x: origin.x * scene.zoom, y: origin.y * scene.zoom)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                    .animation(model.reduceMotion ? nil : .easeOut(duration: 0.15), value: chatGPTWeb.generatingCount > 0)
+                    .accessibilityLabel("ChatGPT Web: \(chatGPTWeb.generatingCount) generating")
+                }
             }
         }
         .frame(width: scene.width * scene.zoom, height: scene.height * scene.zoom, alignment: .topLeading)
@@ -190,22 +209,33 @@ struct PetSceneMetrics {
     let height: CGFloat
     let spriteOrigin: CGPoint
     let bubbleOrigin: CGPoint
+    let chatGPTBubbleOrigin: CGPoint
     let bubbleWidth: CGFloat
     let bubbleHeight: CGFloat
     let hudOrigin: CGPoint
     let effectAnchor: CGPoint
 
-    init(manifest: AssetManifest?, anchors: AssetAnchors?, includesHUD: Bool, hudWindowCount: Int, bubbleSize: CGSize, zoom: CGFloat) {
+    init(manifest: AssetManifest?, anchors: AssetAnchors?, includesHUD: Bool, hudWindowCount: Int, bubbleSize: CGSize, chatGPTEnabled: Bool, zoom: CGFloat) {
         self.zoom = zoom
         canvasWidth = CGFloat(manifest?.canvas.outputWidth ?? 128)
         canvasHeight = CGFloat(manifest?.canvas.outputHeight ?? 128)
         let margin: CGFloat = 4
         let conversion = CGFloat(manifest?.canvas.scale ?? 2)
+        let bubbleGap = 2 * conversion
         bubbleWidth = bubbleSize.width
         bubbleHeight = bubbleSize.height
-        let bubbleX = CGFloat(anchors?.bubble.first ?? 49) * conversion
         let bubbleY = CGFloat(anchors?.bubble.last ?? 7) * conversion
-        bubbleOrigin = CGPoint(x: margin + bubbleX, y: margin + bubbleY)
+        let bubbleAnchorX = CGFloat(anchors?.bubble.first ?? 48) * conversion
+        let bubbleSlots: CGFloat = chatGPTEnabled ? 2 : 1
+        let nearestBubbleOffsetX = canvasWidth - bubbleAnchorX - bubbleWidth
+        let leftmostBubbleOffsetX = nearestBubbleOffsetX - (bubbleSlots - 1) * (bubbleWidth + bubbleGap)
+        spriteOrigin = CGPoint(x: margin + max(0, -leftmostBubbleOffsetX), y: margin)
+        bubbleOrigin = CGPoint(x: spriteOrigin.x + nearestBubbleOffsetX,
+                               y: spriteOrigin.y + bubbleY)
+        let diagonalX = (bubbleWidth * 0.85 * zoom).rounded() / zoom
+        let diagonalY = (bubbleHeight * 0.80 * zoom).rounded() / zoom
+        chatGPTBubbleOrigin = CGPoint(x: bubbleOrigin.x - diagonalX,
+                                      y: bubbleOrigin.y + diagonalY)
         let hudWidth = CGFloat(manifest?.hud.size[0] ?? 52)
         let hudHeight = CGFloat(manifest?.hud.size[1] ?? 24)
         let feet = manifest?.canvas.feetAnchor ?? [32, 58]
@@ -214,18 +244,18 @@ struct PetSceneMetrics {
         let hudY = CGFloat(hudAnchor.last ?? feet[1] + 3) * conversion
             + CGFloat(manifest?.hud.layout.offsetY ?? 6)
             - hudHeight / 2
-        hudOrigin = CGPoint(x: margin + hudX - hudWidth / 2, y: margin + hudY)
+        hudOrigin = CGPoint(x: spriteOrigin.x + hudX - hudWidth / 2, y: spriteOrigin.y + hudY)
+        let hoverReadoutRight: CGFloat = includesHUD ? hudOrigin.x + hudWidth + 48 : 0
         let effectX = CGFloat(anchors?.effects.first ?? 49) * conversion
         let effectY = CGFloat(anchors?.effects.last ?? 13) * conversion
-        effectAnchor = CGPoint(x: margin + effectX, y: margin + effectY)
-        spriteOrigin = CGPoint(x: margin, y: margin)
+        effectAnchor = CGPoint(x: spriteOrigin.x + effectX, y: spriteOrigin.y + effectY)
         let effectWidth = CGFloat(manifest?.effects.values.map { $0.outputSize[0] }.max() ?? 48)
         let effectHeight = CGFloat(manifest?.effects.values.map { $0.outputSize[1] }.max() ?? 48)
-        let right = max(max(canvasWidth, bubbleX + bubbleWidth), effectX + effectWidth / 2)
+        let right = max(max(spriteOrigin.x + canvasWidth, effectAnchor.x + effectWidth / 2), hoverReadoutRight)
         let visibleHUDHeight = hudWindowCount == 1 ? hudHeight / 2 : hudHeight
         let hudBottom = hudOrigin.y - margin + visibleHUDHeight
         let bottom = max(max(canvasHeight, effectY + effectHeight / 2), includesHUD ? hudBottom : 0)
-        width = right + margin * 2
+        width = right + margin
         height = bottom + margin * 2
     }
 }
@@ -235,6 +265,7 @@ private struct PixelHUDView: View {
     let manifest: AssetManifest?
     let assets: SpriteAtlasStore
     let scale: CGFloat
+    @State private var hoveredWindowID: Int?
 
     private var windows: [UsageWindow] { snapshot.availableWindows }
     private var singleWindow: Bool { windows.count == 1 }
@@ -251,6 +282,7 @@ private struct PixelHUDView: View {
                     .resizable()
                     .interpolation(.none)
                     .frame(width: CGFloat(size[0]) * scale, height: barHeight * scale)
+                    .allowsHitTesting(false)
             }
             ForEach(windows) { window in
                 let bar = singleWindow
@@ -258,6 +290,10 @@ private struct PixelHUDView: View {
                     : manifest?.hud.barPositions[window.label]
                 if let bar, bar.count == 4 {
                     let remaining = min(100, max(0, window.remaining))
+                    let barX = CGFloat(bar[0])
+                    let barY = CGFloat(bar[1] - cropOffsetY)
+                    let barWidth = CGFloat(bar[2])
+                    let barHeight = CGFloat(bar[3])
                     let inset: CGFloat = 2
                     let innerWidth = max(0, CGFloat(bar[2]) - inset * 2)
                     let innerHeight = max(0, CGFloat(bar[3]) - inset * 2)
@@ -271,17 +307,79 @@ private struct PixelHUDView: View {
                             x: (CGFloat(bar[0]) + inset) * scale,
                             y: (CGFloat(bar[1] - cropOffsetY) + inset) * scale
                         )
+                        .allowsHitTesting(false)
+
+                    Color.clear
+                        .frame(width: barWidth * scale, height: (barHeight + 2) * scale)
+                        .contentShape(Rectangle())
+                        .onHover { inside in
+                            if inside {
+                                hoveredWindowID = window.id
+                            } else if hoveredWindowID == window.id {
+                                hoveredWindowID = nil
+                            }
+                        }
+                        .offset(x: barX * scale, y: max(0, barY - 1) * scale)
+
+                    if hoveredWindowID == window.id {
+                        let percentage = Int(remaining.rounded(.down))
+                        let labelX = ((barX + barWidth + 2) * scale).rounded()
+                        let labelY = (barY * scale).rounded()
+
+                        Text("\(percentage)%")
+                            .font(.system(size: 5.5 * scale, weight: .semibold, design: .monospaced))
+                            .monospacedDigit()
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: true)
+                            .shadow(color: .black.opacity(0.9), radius: 0.8 * scale)
+                            .frame(width: 30 * scale, height: barHeight * scale, alignment: .leading)
+                            .offset(x: labelX, y: labelY)
+                            .allowsHitTesting(false)
+                    }
                 }
             }
         }
         .frame(width: CGFloat(size[0]) * scale, height: barHeight * scale, alignment: .topLeading)
         .accessibilityHidden(true)
+        .onChange(of: windows.map(\.id)) { _, ids in
+            if let hoveredWindowID, !ids.contains(hoveredWindowID) {
+                self.hoveredWindowID = nil
+            }
+        }
     }
 
     private func color(for remaining: Double) -> Color {
         if remaining <= 18 { return Color(red: 0.92, green: 0.31, blue: 0.31) }
         if remaining <= 40 { return Color(red: 0.94, green: 0.66, blue: 0.22) }
         return Color(red: 0.31, green: 0.77, blue: 0.47)
+    }
+}
+
+private struct ConnectorBubbleView: View {
+    let count: Int
+    let bubble: NSImage
+    let zoom: CGFloat
+    let assets: SpriteAtlasStore
+
+    var body: some View {
+        let width = bubble.size.width * zoom
+        let height = bubble.size.height * zoom
+        ZStack(alignment: .center) {
+            Image(nsImage: bubble)
+                .resizable()
+                .interpolation(.none)
+                .frame(width: width, height: height)
+                .scaleEffect(x: -1, y: 1)
+            PixelCountView(
+                count: count,
+                scale: zoom,
+                assets: assets
+            )
+            .offset(y: -bubble.size.height * zoom * 0.13)
+            .allowsHitTesting(false)
+        }
+        .frame(width: width, height: height, alignment: .center)
     }
 }
 

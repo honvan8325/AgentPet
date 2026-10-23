@@ -6,6 +6,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C10000000000000000000001 /* ChatGPTWebConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000001 /* ChatGPTWebConnector.swift */; };
+		C10000000000000000000002 /* ChatGPTWebNativeServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* ChatGPTWebNativeServer.swift */; };
+		C10000000000000000000003 /* main.swift in WebBridge Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000003 /* main.swift */; };
+		C10000000000000000000004 /* AgentPetWebBridge in Embed Helpers */ = {isa = PBXBuildFile; fileRef = C20000000000000000000004 /* AgentPetWebBridge */; settings = {ATTRIBUTES = (CodeSignOnCopy,); }; };
+		C10000000000000000000005 /* BrowserExtension in Resources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000005 /* BrowserExtension */; };
 		A10000000000000000000001 /* AgentPetApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* AgentPetApp.swift */; };
 		A10000000000000000000002 /* CodexClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* CodexClient.swift */; };
 		A10000000000000000000003 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* SessionStore.swift */; };
@@ -28,6 +33,11 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		C20000000000000000000001 /* ChatGPTWebConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTWebConnector.swift; sourceTree = "<group>"; };
+		C20000000000000000000002 /* ChatGPTWebNativeServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTWebNativeServer.swift; sourceTree = "<group>"; };
+		C20000000000000000000003 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		C20000000000000000000004 /* AgentPetWebBridge */ = {isa = PBXFileReference; explicitFileType = compiled.mach-o.executable; includeInIndex = 0; path = AgentPetWebBridge; sourceTree = BUILT_PRODUCTS_DIR; };
+		C20000000000000000000005 /* BrowserExtension */ = {isa = PBXFileReference; lastKnownFileType = folder; path = BrowserExtension; sourceTree = "<group>"; };
 		A20000000000000000000001 /* AgentPetApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPetApp.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* CodexClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexClient.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
@@ -52,16 +62,25 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		C30000000000000000000001 /* AgentPetWebBridge Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		A30000000000000000000001 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000018 /* Sparkle in Frameworks */,); runOnlyForDeploymentPostprocessing = 0; };
 		A30000000000000000000002 /* AgentPetHook Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		C40000000000000000000001 /* Connectors */ = {isa = PBXGroup; children = (D40000000000000000000002 /* Codex */, C40000000000000000000002 /* ChatGPTWeb */,); path = Connectors; sourceTree = "<group>"; };
+		C40000000000000000000002 /* ChatGPTWeb */ = {isa = PBXGroup; children = (C20000000000000000000001 /* ChatGPTWebConnector.swift */, C20000000000000000000002 /* ChatGPTWebNativeServer.swift */,); path = ChatGPTWeb; sourceTree = "<group>"; };
+		C40000000000000000000003 /* AgentPetWebBridge */ = {isa = PBXGroup; children = (C20000000000000000000003 /* main.swift */,); path = AgentPetWebBridge; sourceTree = "<group>"; };
+		D40000000000000000000001 /* App */ = {isa = PBXGroup; children = (A20000000000000000000001 /* AgentPetApp.swift */, A20000000000000000000027 /* NotificationManager.swift */,); path = App; sourceTree = "<group>"; };
+		D40000000000000000000002 /* Codex */ = {isa = PBXGroup; children = (A20000000000000000000002 /* CodexClient.swift */, A20000000000000000000003 /* SessionStore.swift */, A20000000000000000000004 /* HookIntegration.swift */,); path = Codex; sourceTree = "<group>"; };
+		D40000000000000000000003 /* Pet */ = {isa = PBXGroup; children = (A20000000000000000000020 /* PetTheme.swift */, A20000000000000000000023 /* AssetManifest.swift */, A20000000000000000000024 /* SpriteAtlasStore.swift */, A20000000000000000000025 /* AnimationPlayer.swift */, A20000000000000000000026 /* PetBehaviorEngine.swift */, A20000000000000000000005 /* PetWindow.swift */, A20000000000000000000006 /* PetView.swift */,); path = Pet; sourceTree = "<group>"; };
+		D40000000000000000000004 /* UI */ = {isa = PBXGroup; children = (A20000000000000000000007 /* DashboardView.swift */,); path = UI; sourceTree = "<group>"; };
 		A40000000000000000000001 = {
 			isa = PBXGroup;
 			children = (
 				A40000000000000000000002 /* AgentPet */,
 				A40000000000000000000005 /* AgentPetHook */,
+				C40000000000000000000003 /* AgentPetWebBridge */,
 				A2000000000000000000000E /* README.md */,
 				A40000000000000000000003 /* Products */,
 			);
@@ -72,25 +91,16 @@
 			path = AgentPet;
 			sourceTree = "<group>";
 			children = (
-				A20000000000000000000001 /* AgentPetApp.swift */,
-				A20000000000000000000020 /* PetTheme.swift */,
-				A20000000000000000000023 /* AssetManifest.swift */,
-				A20000000000000000000024 /* SpriteAtlasStore.swift */,
-				A20000000000000000000025 /* AnimationPlayer.swift */,
-				A20000000000000000000026 /* PetBehaviorEngine.swift */,
-				A20000000000000000000027 /* NotificationManager.swift */,
-				A20000000000000000000002 /* CodexClient.swift */,
-				A20000000000000000000003 /* SessionStore.swift */,
-				A20000000000000000000004 /* HookIntegration.swift */,
-				A20000000000000000000005 /* PetWindow.swift */,
-				A20000000000000000000006 /* PetView.swift */,
-				A20000000000000000000007 /* DashboardView.swift */,
+				D40000000000000000000001 /* App */,
+				C40000000000000000000001 /* Connectors */,
+				D40000000000000000000003 /* Pet */,
+				D40000000000000000000004 /* UI */,
 				A20000000000000000000008 /* Assets.xcassets */,
 				A40000000000000000000004 /* Resources */,
 				A2000000000000000000000D /* Info.plist */,
 			);
 		};
-		A40000000000000000000003 /* Products */ = {isa = PBXGroup; children = (A2000000000000000000000F /* AgentPet.app */, A2000000000000000000001C /* AgentPetHook */,); name = Products; sourceTree = "<group>"; };
+		A40000000000000000000003 /* Products */ = {isa = PBXGroup; children = (A2000000000000000000000F /* AgentPet.app */, A2000000000000000000001C /* AgentPetHook */, C20000000000000000000004 /* AgentPetWebBridge */,); name = Products; sourceTree = "<group>"; };
 		A40000000000000000000005 /* AgentPetHook */ = {isa = PBXGroup; children = (A2000000000000000000001B /* main.swift */,); path = AgentPetHook; sourceTree = "<group>"; };
 		A40000000000000000000004 /* Resources */ = {
 			isa = PBXGroup;
@@ -99,11 +109,23 @@
 			children = (
 				A2000000000000000000000C /* AgentPetTemplate-18.png */,
 				A20000000000000000000022 /* Themes */,
+				C20000000000000000000005 /* BrowserExtension */,
 			);
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		C50000000000000000000001 /* AgentPetWebBridge */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C60000000000000000000001 /* Build configuration list for AgentPetWebBridge */;
+			buildPhases = (C70000000000000000000001 /* WebBridge Sources */, C30000000000000000000001 /* AgentPetWebBridge Frameworks */,);
+			buildRules = ();
+			dependencies = ();
+			name = AgentPetWebBridge;
+			productName = AgentPetWebBridge;
+			productReference = C20000000000000000000004 /* AgentPetWebBridge */;
+			productType = "com.apple.product-type.tool";
+		};
 		A50000000000000000000001 /* AgentPet */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A60000000000000000000002 /* Build configuration list for PBXNativeTarget "AgentPet" */;
@@ -114,7 +136,7 @@
 				A70000000000000000000003 /* Embed Helpers */,
 			);
 			buildRules = ();
-			dependencies = (A70000000000000000000004 /* AgentPetHook dependency */,);
+			dependencies = (A70000000000000000000004 /* AgentPetHook dependency */, C70000000000000000000002 /* AgentPetWebBridge dependency */,);
 			name = AgentPet;
 			packageProductDependencies = (B10000000000000000000002 /* Sparkle */,);
 			productName = AgentPet;
@@ -137,7 +159,7 @@
 /* Begin PBXProject section */
 		A80000000000000000000001 /* Project object */ = {
 			isa = PBXProject;
-			attributes = { BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 2700; LastUpgradeCheck = 2700; TargetAttributes = { A50000000000000000000001 = { CreatedOnToolsVersion = 27.0; }; A50000000000000000000002 = { CreatedOnToolsVersion = 27.0; }; }; };
+			attributes = { BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 2700; LastUpgradeCheck = 2700; TargetAttributes = { A50000000000000000000001 = { CreatedOnToolsVersion = 27.0; }; A50000000000000000000002 = { CreatedOnToolsVersion = 27.0; }; C50000000000000000000001 = { CreatedOnToolsVersion = 27.0; }; }; };
 			buildConfigurationList = A60000000000000000000001 /* Build configuration list for PBXProject "AgentPet" */;
 			compatibilityVersion = "Xcode 16.0";
 			developmentRegion = en;
@@ -148,19 +170,21 @@
 			packageReferences = (B10000000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */,);
 			projectDirPath = "";
 			projectRoot = "";
-			targets = (A50000000000000000000001 /* AgentPet */, A50000000000000000000002 /* AgentPetHook */,);
+			targets = (A50000000000000000000001 /* AgentPet */, A50000000000000000000002 /* AgentPetHook */, C50000000000000000000001 /* AgentPetWebBridge */,);
 		};
 /* End PBXProject section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		A70000000000000000000003 /* Embed Helpers */ = {isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = Contents/Helpers; dstSubfolderSpec = 1; files = (A10000000000000000000019 /* AgentPetHook in Embed Helpers */,); name = "Embed Helpers"; runOnlyForDeploymentPostprocessing = 0; };
+		A70000000000000000000003 /* Embed Helpers */ = {isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = Contents/Helpers; dstSubfolderSpec = 1; files = (A10000000000000000000019 /* AgentPetHook in Embed Helpers */, C10000000000000000000004 /* AgentPetWebBridge in Embed Helpers */,); name = "Embed Helpers"; runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXContainerItemProxy section */
+		C80000000000000000000001 /* WebBridge proxy */ = {isa = PBXContainerItemProxy; containerPortal = A80000000000000000000001 /* Project object */; proxyType = 1; remoteGlobalIDString = C50000000000000000000001; remoteInfo = AgentPetWebBridge; };
 		A80000000000000000000002 /* PBXContainerItemProxy */ = {isa = PBXContainerItemProxy; containerPortal = A80000000000000000000001 /* Project object */; proxyType = 1; remoteGlobalIDString = A50000000000000000000002; remoteInfo = AgentPetHook; };
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXTargetDependency section */
+		C70000000000000000000002 /* AgentPetWebBridge dependency */ = {isa = PBXTargetDependency; target = C50000000000000000000001 /* AgentPetWebBridge */; targetProxy = C80000000000000000000001 /* WebBridge proxy */; };
 		A70000000000000000000004 /* AgentPetHook dependency */ = {isa = PBXTargetDependency; target = A50000000000000000000002 /* AgentPetHook */; targetProxy = A80000000000000000000002 /* PBXContainerItemProxy */; };
 /* End PBXTargetDependency section */
 
@@ -172,12 +196,14 @@
 				A10000000000000000000008 /* Assets.xcassets in Resources */,
 				A1000000000000000000000C /* AgentPetTemplate-18.png in Resources */,
 				A1000000000000000000001D /* Themes in Resources */,
+				C10000000000000000000005 /* BrowserExtension in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		C70000000000000000000001 /* WebBridge Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (C10000000000000000000003 /* main.swift in WebBridge Sources */,); runOnlyForDeploymentPostprocessing = 0; };
 		A70000000000000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -189,6 +215,8 @@
 				A10000000000000000000020 /* AnimationPlayer.swift in Sources */,
 				A10000000000000000000021 /* PetBehaviorEngine.swift in Sources */,
 				A10000000000000000000022 /* NotificationManager.swift in Sources */,
+				C10000000000000000000001 /* ChatGPTWebConnector.swift in Sources */,
+				C10000000000000000000002 /* ChatGPTWebNativeServer.swift in Sources */,
 				A10000000000000000000002 /* CodexClient.swift in Sources */,
 				A10000000000000000000003 /* SessionStore.swift in Sources */,
 				A10000000000000000000004 /* HookIntegration.swift in Sources */,
@@ -202,6 +230,8 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
+		C90000000000000000000001 /* Debug AgentPetWebBridge */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGNING_ALLOWED = YES; CODE_SIGN_IDENTITY = "-"; MACOSX_DEPLOYMENT_TARGET = 14.0; PRODUCT_BUNDLE_IDENTIFIER = com.agentpet.app.webbridge; PRODUCT_NAME = AgentPetWebBridge; SKIP_INSTALL = YES; SWIFT_VERSION = 6.0; }; name = Debug; };
+		C90000000000000000000002 /* Release AgentPetWebBridge */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGNING_ALLOWED = YES; CODE_SIGN_IDENTITY = "-"; MACOSX_DEPLOYMENT_TARGET = 14.0; PRODUCT_BUNDLE_IDENTIFIER = com.agentpet.app.webbridge; PRODUCT_NAME = AgentPetWebBridge; SKIP_INSTALL = YES; SWIFT_VERSION = 6.0; }; name = Release; };
 		A90000000000000000000001 /* Debug project config */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; MACOSX_DEPLOYMENT_TARGET = 14.0; SDKROOT = macosx; SWIFT_VERSION = 6.0; }; name = Debug; };
 		A90000000000000000000002 /* Release project config */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; MACOSX_DEPLOYMENT_TARGET = 14.0; SDKROOT = macosx; SWIFT_VERSION = 6.0; }; name = Release; };
 		A90000000000000000000003 /* Debug target config */ = {isa = XCBuildConfiguration; buildSettings = {
@@ -245,6 +275,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		C60000000000000000000001 /* Build configuration list for AgentPetWebBridge */ = {isa = XCConfigurationList; buildConfigurations = (C90000000000000000000001 /* Debug AgentPetWebBridge */, C90000000000000000000002 /* Release AgentPetWebBridge */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		A60000000000000000000001 /* Build configuration list for PBXProject "AgentPet" */ = {isa = XCConfigurationList; buildConfigurations = (A90000000000000000000001 /* Debug project config */, A90000000000000000000002 /* Release project config */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		A60000000000000000000002 /* Build configuration list for PBXNativeTarget "AgentPet" */ = {isa = XCConfigurationList; buildConfigurations = (A90000000000000000000003 /* Debug target config */, A90000000000000000000004 /* Release target config */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		A60000000000000000000003 /* Build configuration list for PBXNativeTarget "AgentPetHook" */ = {isa = XCConfigurationList; buildConfigurations = (A90000000000000000000005 /* Debug AgentPetHook */, A90000000000000000000006 /* Release AgentPetHook */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
