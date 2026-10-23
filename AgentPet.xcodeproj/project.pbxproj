@@ -30,6 +30,8 @@
 		A10000000000000000000020 /* AnimationPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000025 /* AnimationPlayer.swift */; };
 		A10000000000000000000021 /* PetBehaviorEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000026 /* PetBehaviorEngine.swift */; };
 		A10000000000000000000022 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000027 /* NotificationManager.swift */; };
+		A10000000000000000000023 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000028 /* SettingsView.swift */; };
+		A10000000000000000000024 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000029 /* OnboardingView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -54,6 +56,8 @@
 		A20000000000000000000025 /* AnimationPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimationPlayer.swift; sourceTree = "<group>"; };
 		A20000000000000000000026 /* PetBehaviorEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetBehaviorEngine.swift; sourceTree = "<group>"; };
 		A20000000000000000000027 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
+		A20000000000000000000028 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A20000000000000000000029 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		A2000000000000000000000D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A2000000000000000000000E /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = SOURCE_ROOT; };
 		A2000000000000000000000F /* AgentPet.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AgentPet.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -74,7 +78,7 @@
 		D40000000000000000000001 /* App */ = {isa = PBXGroup; children = (A20000000000000000000001 /* AgentPetApp.swift */, A20000000000000000000027 /* NotificationManager.swift */,); path = App; sourceTree = "<group>"; };
 		D40000000000000000000002 /* Codex */ = {isa = PBXGroup; children = (A20000000000000000000002 /* CodexClient.swift */, A20000000000000000000003 /* SessionStore.swift */, A20000000000000000000004 /* HookIntegration.swift */,); path = Codex; sourceTree = "<group>"; };
 		D40000000000000000000003 /* Pet */ = {isa = PBXGroup; children = (A20000000000000000000020 /* PetTheme.swift */, A20000000000000000000023 /* AssetManifest.swift */, A20000000000000000000024 /* SpriteAtlasStore.swift */, A20000000000000000000025 /* AnimationPlayer.swift */, A20000000000000000000026 /* PetBehaviorEngine.swift */, A20000000000000000000005 /* PetWindow.swift */, A20000000000000000000006 /* PetView.swift */,); path = Pet; sourceTree = "<group>"; };
-		D40000000000000000000004 /* UI */ = {isa = PBXGroup; children = (A20000000000000000000007 /* DashboardView.swift */,); path = UI; sourceTree = "<group>"; };
+		D40000000000000000000004 /* UI */ = {isa = PBXGroup; children = (A20000000000000000000007 /* DashboardView.swift */, A20000000000000000000028 /* SettingsView.swift */, A20000000000000000000029 /* OnboardingView.swift */,); path = UI; sourceTree = "<group>"; };
 		A40000000000000000000001 = {
 			isa = PBXGroup;
 			children = (
@@ -223,6 +227,8 @@
 				A10000000000000000000005 /* PetWindow.swift in Sources */,
 				A10000000000000000000006 /* PetView.swift in Sources */,
 				A10000000000000000000007 /* DashboardView.swift in Sources */,
+				A10000000000000000000023 /* SettingsView.swift in Sources */,
+				A10000000000000000000024 /* OnboardingView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

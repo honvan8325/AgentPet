@@ -7,7 +7,6 @@ struct AnimationPlayback: Equatable {
     let clipID: String
     let energy: PetEnergy
     let mood: PetMood
-    let interruptPolicy: String
     let startedAt: Date
 }
 
@@ -24,7 +23,6 @@ final class AnimationPlayer: ObservableObject {
         clipID: "idle.breathe",
         energy: .focused,
         mood: .neutral,
-        interruptPolicy: "soft",
         startedAt: .now
     )
     @Published private(set) var effect: EffectPlayback?
@@ -35,11 +33,10 @@ final class AnimationPlayer: ObservableObject {
         _ clipID: String,
         energy: PetEnergy,
         mood: PetMood,
-        interruptPolicy: String = "soft",
         preservingTimeline: Bool = true
     ) {
         let samePlayback = playback.clipID == clipID && playback.energy == energy
-            && playback.mood == mood && playback.interruptPolicy == interruptPolicy
+            && playback.mood == mood
         if samePlayback && preservingTimeline { return }
         let start = preservingTimeline && playback.clipID == clipID
             ? playback.startedAt
@@ -50,7 +47,6 @@ final class AnimationPlayer: ObservableObject {
             clipID: clipID,
             energy: energy,
             mood: mood,
-            interruptPolicy: interruptPolicy,
             startedAt: start
         )
     }
@@ -61,18 +57,42 @@ final class AnimationPlayer: ObservableObject {
         return frames[frameIndex(frames: frames, elapsed: date.timeIntervalSince(playback.startedAt), looping: clip.kind == "loop")]
     }
 
-    func frameIndex(frames: [AssetFrame], elapsed: TimeInterval, looping: Bool) -> Int {
-        guard !frames.isEmpty else { return 0 }
-        let durations = frames.map { max(1, $0.durationMs) }
-        let total = durations.reduce(0, +)
-        guard total > 0 else { return 0 }
-        let milliseconds = max(0, Int(elapsed * 1_000))
-        let position = looping ? milliseconds % total : min(milliseconds, total - 1)
-        var accumulated = 0
-        for (index, duration) in durations.enumerated() {
-            accumulated += duration
-            if position < accumulated { return index }
+    func frameIndex(
+        frames: [AssetFrame],
+        elapsed: TimeInterval,
+        looping: Bool
+    ) -> Int {
+        guard !frames.isEmpty else {
+            return 0
         }
+
+        let total = frames.reduce(0) {
+            $0 + max(1, $1.durationMs)
+        }
+
+        guard total > 0 else {
+            return 0
+        }
+
+        let milliseconds = max(
+            0,
+            Int(elapsed * 1_000)
+        )
+
+        let position = looping
+            ? milliseconds % total
+            : min(milliseconds, total - 1)
+
+        var accumulated = 0
+
+        for (index, frame) in frames.enumerated() {
+            accumulated += max(1, frame.durationMs)
+
+            if position < accumulated {
+                return index
+            }
+        }
+
         return frames.count - 1
     }
 

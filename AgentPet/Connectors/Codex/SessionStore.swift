@@ -28,8 +28,6 @@ enum PetState: String, Equatable {
     case syncing
     case reconnecting
     case paused
-
-    var animationKey: String { rawValue }
 }
 
 struct SessionEvent: Decodable, Sendable {
@@ -80,7 +78,6 @@ struct DashboardTask: Identifiable {
     let updatedAt: Date?
     let threadID: String?
     let source: String?
-    let isLive: Bool
     let isHistorical: Bool
     let startedAt: Date?
 }
@@ -351,7 +348,6 @@ final class SessionStore: ObservableObject {
                 updatedAt: session.updatedAt,
                 threadID: session.threadID,
                 source: thread?.source,
-                isLive: session.status == .running,
                 isHistorical: false,
                 startedAt: session.startedAt
             )
@@ -367,7 +363,6 @@ final class SessionStore: ObservableObject {
                     updatedAt: $0.updatedAt ?? $0.createdAt,
                     threadID: $0.id,
                     source: $0.source,
-                    isLive: false,
                     isHistorical: true,
                     startedAt: nil
                 )

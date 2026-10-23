@@ -69,6 +69,9 @@ final class PetBehaviorEngine: ObservableObject {
         }
         if hoverStarted || hoverEnded { cancelActivity() }
         if let previous,
+           !next.isPaused,
+           !next.isDragging,
+           !next.reduceMotion,
            previous.hasQuotaData,
            next.hasQuotaData,
            previous.energy != next.energy {
@@ -111,7 +114,9 @@ final class PetBehaviorEngine: ObservableObject {
             cancelActivity()
             let notice = role("needsInput", fallback: "status.permission_notice")
             playSequence(transitionSequence(from: visualState, to: notice) + [target], fallback: target)
-            player.playEffect("alert")
+            if !next.reduceMotion {
+                player.playEffect("alert")
+            }
             return
         }
         if !next.isPaused, newEvent, next.lifecycleEvent == "Interrupt",
@@ -173,10 +178,12 @@ final class PetBehaviorEngine: ObservableObject {
             if stateChanged {
                 let sequence = transitionSequence(from: visualState, to: target)
                 playSequence(sequence, fallback: target)
-                switch next.activity {
-                case .reconnecting: player.playEffect("sync")
-                case .disconnected: player.playEffect("warning")
-                default: break
+                if !next.isPaused && !next.reduceMotion {
+                    switch next.activity {
+                    case .reconnecting: player.playEffect("sync")
+                    case .disconnected: player.playEffect("warning")
+                    default: break
+                    }
                 }
             } else if queuedClips.isEmpty {
                 show(target, energy: next.energy, mood: next.mood)
@@ -195,8 +202,14 @@ final class PetBehaviorEngine: ObservableObject {
             } else {
                 playSequence(transitionSequence(from: visualState, to: target), fallback: target)
             }
-            if next.activity == .reconnecting || next.activity == .syncing { player.playEffect("sync") }
-            if next.activity == .disconnected { player.playEffect("warning") }
+            if !next.isPaused && !next.reduceMotion {
+                if next.activity == .reconnecting || next.activity == .syncing {
+                    player.playEffect("sync")
+                }
+                if next.activity == .disconnected {
+                    player.playEffect("warning")
+                }
+            }
             scheduleNextActivity()
             return
         }
@@ -395,7 +408,6 @@ final class PetBehaviorEngine: ObservableObject {
             resolved,
             energy: energy,
             mood: mood,
-            interruptPolicy: resolvedClip.interruptPolicy,
             preservingTimeline: preservingTimeline
         )
         if player.playback.revision == previousRevision, playbackTask != nil { return }

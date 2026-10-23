@@ -123,30 +123,37 @@ struct PetView: View {
                         }
                     }
 
-                    PetInteractionView(
-                        onClick: engine.click,
-                        onDoubleClick: engine.doubleClick,
-                        onRepeatedClick: engine.repeatedClick,
-                        onHover: { isHovering = $0 },
-                        onDragStart: { isDragging = true; model.isPetDragging = true },
-                        onDragEnd: { isDragging = false; model.isPetDragging = false; model.onPetDragEnd?() },
-                        onOpenDashboard: model.openDashboard,
-                        onOpenSettings: model.openSettings,
-                        onHidePet: model.hidePet
-                    )
-                    .frame(width: scene.canvasWidth * 0.82 * scene.zoom, height: scene.canvasHeight * scene.zoom)
-                    .offset(
-                        x: (scene.spriteOrigin.x + scene.canvasWidth * 0.09) * scene.zoom,
-                        y: scene.spriteOrigin.y * scene.zoom
-                    )
-
-                    if model.showUsageHUD, let snapshot = codex.usage, !snapshot.availableWindows.isEmpty {
-                        PixelHUDView(snapshot: snapshot, manifest: manifest, assets: assets, scale: scene.zoom)
-                            .offset(x: scene.hudOrigin.x * scene.zoom, y: scene.hudOrigin.y * scene.zoom)
-                    }
-
                 }
                 .frame(width: scene.width * scene.zoom, height: scene.height * scene.zoom, alignment: .topLeading)
+            }
+
+            PetInteractionView(
+                onClick: engine.click,
+                onDoubleClick: engine.doubleClick,
+                onRepeatedClick: engine.repeatedClick,
+                onHover: { isHovering = $0 },
+                onDragStart: { isDragging = true; model.isPetDragging = true },
+                onDragEnd: { isDragging = false; model.isPetDragging = false; model.onPetDragEnd?() },
+                onOpenDashboard: model.openDashboard,
+                onOpenSettings: model.openSettings,
+                onHidePet: model.hidePet
+            )
+            .frame(width: scene.canvasWidth * 0.82 * scene.zoom, height: scene.canvasHeight * scene.zoom)
+            .offset(
+                x: (scene.spriteOrigin.x + scene.canvasWidth * 0.09) * scene.zoom,
+                y: scene.spriteOrigin.y * scene.zoom
+            )
+
+            if model.showUsageHUD,
+               let snapshot = codex.usage,
+               !snapshot.availableWindows.isEmpty {
+                PixelHUDView(
+                    snapshot: snapshot,
+                    manifest: assets.manifest,
+                    assets: assets,
+                    scale: scene.zoom
+                )
+                .offset(x: scene.hudOrigin.x * scene.zoom, y: scene.hudOrigin.y * scene.zoom)
             }
 
             if let bubble = assets.hudImage("bubble") {

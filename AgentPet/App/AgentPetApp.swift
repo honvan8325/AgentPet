@@ -342,16 +342,13 @@ final class AgentPetModel: ObservableObject {
     }
 
     private func receive(_ event: SessionEvent) {
-        guard sessions.apply(event), let sessionID = event.sessionID else { return }
-        let session = sessions.sessions[sessionID]
-        let elapsedSeconds: TimeInterval?
-        if (event.event == "Stop" || event.event == "Interrupt"),
-           let startedAt = session?.startedAt {
-            let elapsed = event.timestamp - startedAt.timeIntervalSince1970
-            elapsedSeconds = elapsed >= 0 && elapsed <= 604_800 ? elapsed : nil
-        } else {
-            elapsedSeconds = nil
+        guard
+            sessions.apply(event),
+            let sessionID = event.sessionID
+        else {
+            return
         }
+
         if event.event == "UserPromptSubmit" {
             Task { [weak self] in
                 guard let self else { return }
@@ -359,18 +356,34 @@ final class AgentPetModel: ObservableObject {
                     self.sessions.mapThread(sessionID: sessionID, to: thread)
                 }
             }
+
+            return
         }
 
-        if ["Stop", "Interrupt", "PermissionRequest"].contains(event.event) {
-            notifyAcceptedCodexEvent(event, sessionID: sessionID, elapsedSeconds: elapsedSeconds)
-        } else {
-            notificationManager.receive(
-                event,
-                chatTitle: session?.title,
-                threadID: session?.threadID,
-                elapsedSeconds: elapsedSeconds
-            )
+        guard
+            event.event == "Stop" ||
+            event.event == "Interrupt" ||
+            event.event == "PermissionRequest"
+        else {
+            return
         }
+
+        let session = sessions.sessions[sessionID]
+        let elapsedSeconds: TimeInterval?
+
+        if event.event != "PermissionRequest",
+           let startedAt = session?.startedAt {
+            let elapsed = event.timestamp - startedAt.timeIntervalSince1970
+            elapsedSeconds = elapsed >= 0 && elapsed <= 604_800 ? elapsed : nil
+        } else {
+            elapsedSeconds = nil
+        }
+
+        notifyAcceptedCodexEvent(
+            event,
+            sessionID: sessionID,
+            elapsedSeconds: elapsedSeconds
+        )
     }
 
     private func notifyAcceptedCodexEvent(
@@ -386,17 +399,19 @@ final class AgentPetModel: ObservableObject {
             if self.meaningfulCodexTitle(acceptedSession?.title) == nil {
                 let lookupID = acceptedSession?.threadID ?? sessionID
 
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
+                if self.codex.connectionState == .connected {
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
 
-                    if let metadata = await self.codex.findThreadMetadata(
-                        lookupID,
-                        refreshIfPlaceholder: true
-                    ) {
-                        self.sessions.mapThread(
-                            sessionID: sessionID,
-                            to: metadata
-                        )
+                        if let metadata = await self.codex.findThreadMetadata(
+                            lookupID,
+                            refreshIfPlaceholder: true
+                        ) {
+                            self.sessions.mapThread(
+                                sessionID: sessionID,
+                                to: metadata
+                            )
+                        }
                     }
                 }
 
