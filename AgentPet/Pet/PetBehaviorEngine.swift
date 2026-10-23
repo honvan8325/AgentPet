@@ -218,7 +218,9 @@ final class PetBehaviorEngine: ObservableObject {
             cancelActivity()
             if next.activity == .idle, hoverStarted {
                 playHoverNotice()
-            } else if next.activity != .idle, hoverStarted {
+            } else if next.activity != .idle,
+                      hoverStarted,
+                      !next.reduceMotion {
                 player.playEffect("heart")
             }
             if presentationChanged, queuedClips.isEmpty {
@@ -324,12 +326,20 @@ final class PetBehaviorEngine: ObservableObject {
         lastActivityAt = .now
         cancelActivity()
         if context.activity != .idle {
-            player.playEffect(effect)
+            if !context.reduceMotion {
+                player.playEffect(effect)
+            }
+
             scheduleNextActivity()
             return
         }
+
         temporaryMood = mood
-        player.playEffect(effect)
+
+        if !context.reduceMotion {
+            player.playEffect(effect)
+        }
+
         var sequence = [String]()
         let source = player.playback.clipID == "idle.sleep" ? baseClip(for: .idle) : visualState
         if player.playback.clipID == "idle.sleep",
@@ -446,7 +456,9 @@ final class PetBehaviorEngine: ObservableObject {
         var sequence = transitionSequence(from: visualState, to: hover)
         sequence.append(interaction("hoverPeek", fallback: "interact.hover_peek"))
         playSequence(sequence, fallback: "interact.hover_peek")
-        player.playEffect("heart")
+        if context?.reduceMotion != true {
+            player.playEffect("heart")
+        }
     }
 
     private func playNext() {
@@ -572,7 +584,7 @@ final class PetBehaviorEngine: ObservableObject {
             fallback: working
         )
 
-        if !isReading {
+        if !isReading && !context.reduceMotion {
             player.playEffect("question")
         }
     }

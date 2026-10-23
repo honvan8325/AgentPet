@@ -119,15 +119,21 @@ final class SessionStore: ObservableObject {
             if let verifiedThreadID = session.threadID {
                 thread = byID[verifiedThreadID]
             } else {
-                let matches = threads.filter {
-                    $0.id == sessionID || $0.sessionID == sessionID
+                if let direct = byID[sessionID] {
+                    thread = direct
+                } else {
+                    let matches = threads.filter { $0.sessionID == sessionID }
+                    thread = matches.count == 1 ? matches.first : nil
                 }
-                thread = matches.count == 1 ? matches.first : nil
             }
 
             guard let thread else { continue }
             session.threadID = thread.id
-            session.title = thread.title
+            let incomingTitle = thread.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !incomingTitle.isEmpty &&
+                incomingTitle.caseInsensitiveCompare("Untitled thread") != .orderedSame {
+                session.title = thread.title
+            }
             sessions[sessionID] = session
         }
     }
@@ -149,7 +155,11 @@ final class SessionStore: ObservableObject {
         }
 
         session.threadID = thread.id
-        session.title = thread.title
+        let incomingTitle = thread.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !incomingTitle.isEmpty &&
+            incomingTitle.caseInsensitiveCompare("Untitled thread") != .orderedSame {
+            session.title = thread.title
+        }
         sessions[sessionID] = session
     }
 

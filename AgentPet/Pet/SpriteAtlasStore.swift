@@ -17,7 +17,7 @@ final class SpriteAtlasStore: ObservableObject {
     private var atlasesByID: [String: AssetAtlas] = [:]
     private var atlasImages: [String: CGImage] = [:]
     private var leastRecentlyUsed: [String] = []
-    private var lastFrameKey: String?
+    private var lastFrame: AssetFrame?
     private var lastFrameImage: NSImage?
     private var singleBarImageCache: [Bool: NSImage] = [:]
     private var countGlyphs: [Character: NSImage] = [:]
@@ -60,8 +60,11 @@ final class SpriteAtlasStore: ObservableObject {
     }
 
     func image(for frame: AssetFrame) -> NSImage? {
-        let frameKey = "\(frame.atlas):\(frame.rect)"
-        if frameKey == lastFrameKey, let lastFrameImage { return lastFrameImage }
+        if lastFrame == frame,
+           let lastFrameImage {
+            return lastFrameImage
+        }
+
         guard frame.rect.count == 4,
               let atlas = atlasImage(frame.atlas) else { return nil }
         let x = frame.rect[0], y = frame.rect[1]
@@ -72,7 +75,7 @@ final class SpriteAtlasStore: ObservableObject {
         let rect = CGRect(x: x, y: y, width: width, height: height)
         guard let cropped = atlas.cropping(to: rect) else { return nil }
         let image = NSImage(cgImage: cropped, size: NSSize(width: cropped.width, height: cropped.height))
-        lastFrameKey = frameKey
+        lastFrame = frame
         lastFrameImage = image
         return image
     }
@@ -125,7 +128,7 @@ final class SpriteAtlasStore: ObservableObject {
     func purgeAtlasCache() {
         atlasImages.removeAll(keepingCapacity: true)
         leastRecentlyUsed.removeAll(keepingCapacity: true)
-        lastFrameKey = nil
+        lastFrame = nil
         lastFrameImage = nil
     }
 
@@ -136,8 +139,10 @@ final class SpriteAtlasStore: ObservableObject {
     private func atlasImage(_ id: String) -> CGImage? {
         guard let metadata = atlasesByID[id] else { return nil }
         if let cached = atlasImages[id] {
-            leastRecentlyUsed.removeAll { $0 == id }
-            leastRecentlyUsed.append(id)
+            if leastRecentlyUsed.last != id {
+                leastRecentlyUsed.removeAll { $0 == id }
+                leastRecentlyUsed.append(id)
+            }
             return cached
         }
         guard let themeURL,

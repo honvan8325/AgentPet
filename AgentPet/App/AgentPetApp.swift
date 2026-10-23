@@ -221,13 +221,20 @@ final class AgentPetModel: ObservableObject {
             chatGPTDashboardRequest &+= 1
             openDashboard()
         }
-        chatGPTWeb.onGenerationEnded = { [weak self] tabID, generationID, chatTitle, elapsedSeconds in
+        chatGPTWeb.onGenerationEnded = {
+            [weak self]
+            tabID,
+            generationID,
+            chatTitle,
+            elapsedSeconds,
+            conversationURL in
             guard let self else { return }
             notificationManager.chatGPTGenerationEnded(
                 tabID: tabID,
                 generationID: generationID,
                 chatTitle: chatTitle,
-                elapsedSeconds: elapsedSeconds
+                elapsedSeconds: elapsedSeconds,
+                conversationURL: conversationURL
             )
             chatGPTCompletionRevision &+= 1
         }
@@ -322,11 +329,17 @@ final class AgentPetModel: ObservableObject {
     func checkForUpdates() { updaterController?.checkForUpdates(nil) }
 
     func setAutomaticUpdateChecks(_ enabled: Bool) {
-        updaterController?.updater.automaticallyChecksForUpdates = enabled
+        guard let updater = updaterController?.updater else { return }
+
+        objectWillChange.send()
+        updater.automaticallyChecksForUpdates = enabled
     }
 
     func setAutomaticDownloads(_ enabled: Bool) {
-        updaterController?.updater.automaticallyDownloadsUpdates = enabled
+        guard let updater = updaterController?.updater else { return }
+
+        objectWillChange.send()
+        updater.automaticallyDownloadsUpdates = enabled
     }
 
     func shutdown() async {
@@ -352,7 +365,8 @@ final class AgentPetModel: ObservableObject {
         if event.event == "UserPromptSubmit" {
             Task { [weak self] in
                 guard let self else { return }
-                if let thread = await self.codex.findThreadMetadata(sessionID) {
+                if let thread = await self.codex.findThreadMetadata(sessionID),
+                   self.sessions.sessions[sessionID]?.turnID == event.turnID {
                     self.sessions.mapThread(sessionID: sessionID, to: thread)
                 }
             }
@@ -396,22 +410,22 @@ final class AgentPetModel: ObservableObject {
         Task { @MainActor [weak self] in
             guard let self else { return }
 
-            if self.meaningfulCodexTitle(acceptedSession?.title) == nil {
+            if self.meaningfulCodexTitle(acceptedSession?.title) == nil,
+               self.codex.connectionState == .connected {
                 let lookupID = acceptedSession?.threadID ?? sessionID
 
-                if self.codex.connectionState == .connected {
-                    Task { @MainActor [weak self] in
-                        guard let self else { return }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
 
-                        if let metadata = await self.codex.findThreadMetadata(
-                            lookupID,
-                            refreshIfPlaceholder: true
-                        ) {
-                            self.sessions.mapThread(
-                                sessionID: sessionID,
-                                to: metadata
-                            )
-                        }
+                    if let metadata = await self.codex.findThreadMetadata(
+                        lookupID,
+                        refreshIfPlaceholder: true
+                    ),
+                       self.sessions.sessions[sessionID]?.turnID == event.turnID {
+                        self.sessions.mapThread(
+                            sessionID: sessionID,
+                            to: metadata
+                        )
                     }
                 }
 
@@ -465,7 +479,6 @@ final class AgentPetModel: ObservableObject {
                 backoff = 2
             } catch {
                 guard !Task.isCancelled else { break }
-                hasConnected = true
                 codex.markReconnecting(error)
             }
             guard !Task.isCancelled else { break }
@@ -510,6 +523,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let source: String?
         let threadID: String?
         let tabID: Int?
+        let generationID: String?
+        let conversationURL: String?
     }
 
     let model = AgentPetModel()
@@ -549,14 +564,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model.start()
         if let target = pendingNotificationTarget {
             pendingNotificationTarget = nil
-            handleNotificationOpen(source: target.source, threadID: target.threadID, tabID: target.tabID)
+            handleNotificationOpen(
+                source: target.source,
+                threadID: target.threadID,
+                tabID: target.tabID,
+                generationID: target.generationID,
+                conversationURL: target.conversationURL
+            )
         }
         if !model.didCompleteOnboarding { onboarding.show() }
     }
 
-    func handleNotificationOpen(source: String?, threadID: String?, tabID: Int?) {
+    func handleNotificationOpen(
+        source: String?,
+        threadID: String?,
+        tabID: Int?,
+        generationID: String?,
+        conversationURL: String?
+    ) {
         guard dashboard != nil else {
-            pendingNotificationTarget = PendingNotificationTarget(source: source, threadID: threadID, tabID: tabID)
+            pendingNotificationTarget = PendingNotificationTarget(
+                source: source,
+                threadID: threadID,
+                tabID: tabID,
+                generationID: generationID,
+                conversationURL: conversationURL
+            )
             return
         }
 
@@ -564,9 +597,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case "codex":
             if !model.openThread(threadID) { dashboard.show() }
         case "chatgpt_web":
+            if let conversationURL,
+               model.chatGPTWeb.openConversation(conversationURL) {
+                return
+            }
+
             if let tabID,
+               let generationID,
                model.chatGPTWeb.connectionState == .connected,
-               model.chatGPTWeb.tabs[tabID] != nil {
+               let tab = model.chatGPTWeb.tabs[tabID],
+               tab.generationID == generationID {
                 model.chatGPTWeb.openTab(tabID)
             } else {
                 dashboard.show()
@@ -638,9 +678,17 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         let source = info["agentpet.source"] as? String
         let threadID = info["agentpet.threadID"] as? String
         let tabID = info["agentpet.tabID"] as? Int
+        let generationID = info["agentpet.generationID"] as? String
+        let conversationURL = info["agentpet.conversationURL"] as? String
 
         await MainActor.run {
-            self.handleNotificationOpen(source: source, threadID: threadID, tabID: tabID)
+            self.handleNotificationOpen(
+                source: source,
+                threadID: threadID,
+                tabID: tabID,
+                generationID: generationID,
+                conversationURL: conversationURL
+            )
         }
     }
 

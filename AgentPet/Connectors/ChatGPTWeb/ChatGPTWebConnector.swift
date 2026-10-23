@@ -41,7 +41,7 @@ final class ChatGPTWebConnector: ObservableObject {
 
     var onEnabledChange: (() -> Void)?
     var onShowDashboard: (() -> Void)?
-    var onGenerationEnded: ((Int, String, String?, TimeInterval?) -> Void)?
+    var onGenerationEnded: ((Int, String, String?, TimeInterval?, String?) -> Void)?
 
     private let server = ChatGPTWebNativeServer()
     private var freshnessTask: Task<Void, Never>?
@@ -64,7 +64,19 @@ final class ChatGPTWebConnector: ObservableObject {
     }
 
     var generatingCount: Int {
-        generatingTabs.count
+        guard isEnabled,
+              connectionState == .connected else {
+            return 0
+        }
+
+        let now = Date.now
+
+        return tabs.values.reduce(into: 0) { count, tab in
+            if tab.state == .generating,
+               now.timeIntervalSince(tab.lastSeen) < 60 {
+                count += 1
+            }
+        }
     }
 
     var sortedTabs: [ChatGPTWebTab] {
@@ -240,6 +252,36 @@ final class ChatGPTWebConnector: ObservableObject {
                                 configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
     }
 
+    @discardableResult
+    func openConversation(_ raw: String) -> Bool {
+        guard
+            let url = URL(string: raw),
+            url.scheme == "https",
+            url.host == "chatgpt.com",
+            url.user == nil,
+            url.password == nil,
+            url.query == nil,
+            url.fragment == nil,
+            url.path.range(
+                of: "^/c/[A-Za-z0-9-]+/?$",
+                options: .regularExpression
+            ) != nil,
+            let chrome = NSWorkspace.shared.urlForApplication(
+                withBundleIdentifier: "com.google.Chrome"
+            )
+        else {
+            return false
+        }
+
+        NSWorkspace.shared.open(
+            [url],
+            withApplicationAt: chrome,
+            configuration: NSWorkspace.OpenConfiguration(),
+            completionHandler: nil
+        )
+        return true
+    }
+
     private func validExtensionID(_ value: String) -> Bool {
         value.utf8.count == 32 && value.range(of: "^[a-p]{32}$", options: .regularExpression) != nil
     }
@@ -264,6 +306,7 @@ final class ChatGPTWebConnector: ObservableObject {
         let observedAt: Double?
         let title: String?
         let generationStartedAt: Double?
+        let conversationURL: String?
     }
 
     private func safeTitle(_ raw: String?) -> String? {
@@ -294,7 +337,10 @@ final class ChatGPTWebConnector: ObservableObject {
             connectionState = .connected
             lastError = nil
         case "snapshot":
-            guard let observations = message.tabs else { return }
+            guard activeConnection == connection,
+                  connectionState == .connected,
+                  tabs.isEmpty,
+                  let observations = message.tabs else { return }
             var snapshot: [Int: ChatGPTWebTab] = [:]
             for observation in observations {
                 guard validObservation(observation), snapshot[observation.tabId] == nil else { return }
@@ -352,8 +398,11 @@ final class ChatGPTWebConnector: ObservableObject {
             endedOrder.append(key)
             if endedOrder.count > 256 { endedGenerations.remove(endedOrder.removeFirst()) }
             let elapsedSeconds: TimeInterval?
-            if let start = tab.generationStartedAt {
-                let elapsed = now.timeIntervalSince(start)
+            let startedAt = tab.generationStartedAt ??
+                validGenerationStart(message.generationStartedAt)
+            if let startedAt {
+                let completedAt = Date(timeIntervalSince1970: timestamp / 1_000)
+                let elapsed = completedAt.timeIntervalSince(startedAt)
                 elapsedSeconds = elapsed >= 0 && elapsed <= 604_800 ? elapsed : nil
             } else {
                 elapsedSeconds = nil
@@ -366,7 +415,7 @@ final class ChatGPTWebConnector: ObservableObject {
             updated.lastSeen = now
             updated.generationStartedAt = nil
             tabs[id] = updated
-            onGenerationEnded?(id, generation, completedTitle, elapsedSeconds)
+            onGenerationEnded?(id, generation, completedTitle, elapsedSeconds, message.conversationURL)
         default:
             return
         }

@@ -161,7 +161,8 @@ final class NotificationManager: ObservableObject {
         tabID: Int,
         generationID: String,
         chatTitle: String?,
-        elapsedSeconds: TimeInterval?
+        elapsedSeconds: TimeInterval?,
+        conversationURL: String?
     ) {
         lastChatGPTNotificationStatus =
             "ChatGPT completion event received."
@@ -190,11 +191,19 @@ final class NotificationManager: ObservableObject {
         if shouldSendSystem {
             lastChatGPTNotificationStatus =
                 "Submitting ChatGPT notification to macOS."
+            var navigationInfo: [String: Any] = [
+                "agentpet.source": "chatgpt_web",
+                "agentpet.tabID": tabID,
+                "agentpet.generationID": generationID
+            ]
+            if let conversationURL {
+                navigationInfo["agentpet.conversationURL"] = conversationURL
+            }
             post(
                 identifier: identifier,
                 title: "ChatGPT response ended",
                 body: displayChatTitle(chatTitle, fallback: "ChatGPT · Tab \(tabID)"),
-                userInfo: ["agentpet.source": "chatgpt_web", "agentpet.tabID": tabID],
+                userInfo: navigationInfo,
                 reportChatGPTResult: true
             )
         }

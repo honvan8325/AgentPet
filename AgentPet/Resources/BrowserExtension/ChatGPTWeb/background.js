@@ -38,6 +38,22 @@ function cleanConversationTitle(value) {
   return cleaned;
 }
 
+function cleanConversationURL(value) {
+  if (typeof value !== "string") return null;
+
+  try {
+    const url = new URL(value);
+    if (url.origin !== "https://chatgpt.com" || url.username || url.password ||
+        !/^\/c\/[A-Za-z0-9-]+\/?$/.test(url.pathname)) {
+      return null;
+    }
+
+    return url.origin + url.pathname.replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+}
+
 function validObservation(message) {
   return ["unknown", "idle", "generating"].includes(message.state) &&
     validPageMetadata(message) &&
@@ -150,9 +166,19 @@ function applyObservation(tabId, message, sender, chromeTab) {
     : null;
   const conversationTitle = cleanConversationTitle(message.conversationTitle);
   const browserTitle = cleanTabTitle(chromeTab?.title);
-  const title = conversationTitle ?? browserTitle ?? (sameRoute ? previous?.title ?? null : null);
-  const titleSource = conversationTitle ? "conversation" :
-    browserTitle ? "tab" : sameRoute ? previous?.titleSource ?? null : null;
+  const retainedConversationTitle =
+    sameRoute && previous?.titleSource === "conversation"
+      ? previous.title
+      : null;
+  const title = conversationTitle ?? retainedConversationTitle ?? browserTitle ??
+    (sameRoute ? previous?.title ?? null : null);
+  const titleSource = conversationTitle || retainedConversationTitle
+    ? "conversation"
+    : browserTitle
+      ? "tab"
+      : sameRoute
+        ? previous?.titleSource ?? null
+        : null;
   const record = {tabId, state: message.state, generationId: message.generationId,
     generationStartedAt, lastSeen: Date.now(), pageEpoch: acceptedPage.pageEpoch,
     routeRevision: acceptedPage.routeRevision, title, titleSource};
@@ -198,6 +224,12 @@ async function probe(tabId) {
   if (reachable || epochs.get(tabId) !== epoch) return;
   const current = await chrome.tabs.get(tabId).catch(() => null);
   if (epochs.get(tabId) === epoch && isChatGPT(current?.url)) {
+    const previous = tabs.get(tabId);
+
+    if (previous?.state === "generating" && Date.now() - previous.lastSeen < 30000) {
+      return;
+    }
+
     const title = cleanTabTitle(current?.title);
     const record = {tabId, state: "unknown", generationId: null, lastSeen: Date.now(),
       generationStartedAt: null, title, titleSource: title ? "tab" : null,
@@ -219,7 +251,6 @@ async function refreshTabs() {
       updateTrackedTitle(tab.id, tab.title);
       await probe(tab.id);
     }));
-    publishSnapshot();
   } finally { refreshing = false; }
 }
 
@@ -278,82 +309,90 @@ function clearTab(tabId) {
   if (wasTracked) sendNative({version: 1, type: "tab_closed", tabId});
 }
 
-function invalidateTab(tabId) {
-  const previous = sequences.get(tabId);
-  if (previous) {
-    retire(tabId, `page:${previous.pageEpoch}`);
-    if (previous.documentId !== null) retire(tabId, `document:${previous.documentId}`);
-  }
-  sequences.delete(tabId);
-  epochs.set(tabId, (epochs.get(tabId) ?? 0) + 1);
-  const record = {tabId, state: "unknown", generationId: null, generationStartedAt: null,
-    lastSeen: Date.now(), title: null, titleSource: null, pageEpoch: null, routeRevision: null};
-  tabs.set(tabId, record);
-  sendNative({version: 1, type: "tab_state", tabId, state: "unknown", generationId: null,
-    generationStartedAt: null, observedAt: record.lastSeen, title: null});
-}
-
 chrome.runtime.onMessage.addListener((message, sender) => {
   const tabId = sender.tab?.id;
-  if (!Number.isSafeInteger(tabId) || tabId < 0 || sender.frameId !== 0 || !isChatGPT(sender.url)) return;
-  chrome.tabs.get(tabId).then(current => {
-    if (!isChatGPT(current.url)) return;
-    if (message?.type === "tab_state") {
-      applyObservation(tabId, message, sender, current);
-    } else if (message?.type === "conversation_title") {
-      const tab = tabs.get(tabId);
-      const identity = pageIdentity(tabId, message, sender);
-      const currentSource = sequences.get(tabId);
-      const title = cleanConversationTitle(message.conversationTitle);
-      if (!tab || !title || !identity?.samePage ||
-          tab.pageEpoch !== message.pageEpoch || tab.routeRevision !== message.routeRevision ||
-          currentSource?.routeRevision !== message.routeRevision) return;
-      acceptPageIdentity(tabId, identity);
-      if (tab.title === title && tab.titleSource === "conversation") return;
-      tabs.set(tabId, {...tab, title, titleSource: "conversation"});
-      sendNative({version: 1, type: "tab_title", tabId, title});
-    } else if (message?.type === "generation_ended" && message.state === "idle" &&
-               validObservation(message) && typeof message.generationId === "string") {
-      const tab = tabs.get(tabId);
-      const identity = pageIdentity(tabId, message, sender);
-      const currentSource = sequences.get(tabId);
-      if (!identity?.samePage || currentSource?.routeRevision !== message.routeRevision ||
-          !["generating", "idle"].includes(tab?.state) || tab.pageEpoch !== message.pageEpoch ||
-          tab.routeRevision !== message.routeRevision || tab.generationId !== message.generationId ||
-          Date.now() - tab.lastSeen >= 30000) return;
-      const key = `${tabId}:${message.generationId}`;
-      if (endedGenerations.has(key)) return;
-      acceptPageIdentity(tabId, identity);
-      endedGenerations.add(key);
-      endedOrder.push(key);
-      if (endedOrder.length > 256) endedGenerations.delete(endedOrder.shift());
-      const conversationTitle = cleanConversationTitle(message.conversationTitle);
-      const routeMatches = tab.pageEpoch === message.pageEpoch &&
-        tab.routeRevision === message.routeRevision;
-      const browserTitle = cleanTabTitle(current?.title);
-      const completedTitle = conversationTitle ??
-        (routeMatches ? tab.title : null) ?? browserTitle;
-      const titleSource = conversationTitle ? "conversation" :
-        routeMatches && tab.title ? tab.titleSource ?? "tab" : browserTitle ? "tab" : null;
-      tabs.set(tabId, {...tab, state: "idle", generationId: message.generationId,
-        generationStartedAt: null, lastSeen: Date.now(), title: completedTitle, titleSource});
-      sendNative({version: 1, type: "generation_ended", tabId,
-        generationId: message.generationId, observedAt: message.observedAt,
-        title: completedTitle});
+  if (!Number.isSafeInteger(tabId) || tabId < 0 || sender.frameId !== 0 ||
+      !isChatGPT(sender.url) || (sender.tab?.url && !isChatGPT(sender.tab.url))) return;
+
+  const current = sender.tab;
+  if (message?.type === "tab_state") {
+    applyObservation(tabId, message, sender, current);
+  } else if (message?.type === "conversation_title") {
+    const tab = tabs.get(tabId);
+    const source = sequences.get(tabId);
+    const title = cleanConversationTitle(message.conversationTitle);
+
+    if (!tab || !source || !title || !validPageMetadata(message) ||
+        tab.pageEpoch !== message.pageEpoch || tab.routeRevision !== message.routeRevision ||
+        source.pageEpoch !== message.pageEpoch || source.routeRevision !== message.routeRevision ||
+        (source.documentId !== null && typeof sender.documentId === "string" &&
+          sender.documentId !== source.documentId)) {
+      return;
     }
-  }).catch(() => {});
+
+    if (tab.title === title && tab.titleSource === "conversation") return;
+
+    tabs.set(tabId, {
+      ...tab,
+      title,
+      titleSource: "conversation"
+    });
+    sendNative({version: 1, type: "tab_title", tabId, title});
+  } else if (message?.type === "generation_ended" && message.state === "idle" &&
+             validObservation(message) && typeof message.generationId === "string") {
+    const tab = tabs.get(tabId);
+    const identity = pageIdentity(tabId, message, sender);
+    const currentSource = sequences.get(tabId);
+    if (!identity?.samePage || currentSource?.routeRevision !== message.routeRevision ||
+        !["generating", "idle"].includes(tab?.state) || tab.pageEpoch !== message.pageEpoch ||
+        tab.routeRevision !== message.routeRevision || tab.generationId !== message.generationId ||
+        Date.now() - tab.lastSeen >= 30000) return;
+    const key = `${tabId}:${message.generationId}`;
+    if (endedGenerations.has(key)) return;
+    acceptPageIdentity(tabId, identity);
+    endedGenerations.add(key);
+    endedOrder.push(key);
+    if (endedOrder.length > 256) endedGenerations.delete(endedOrder.shift());
+    const conversationTitle = cleanConversationTitle(message.conversationTitle);
+    const routeMatches = tab.pageEpoch === message.pageEpoch &&
+      tab.routeRevision === message.routeRevision;
+    const browserTitle = cleanTabTitle(current?.title);
+    const completedTitle = conversationTitle ??
+      (routeMatches ? tab.title : null) ?? browserTitle;
+    const titleSource = conversationTitle ? "conversation" :
+      routeMatches && tab.title ? tab.titleSource ?? "tab" : browserTitle ? "tab" : null;
+    const completedURL = cleanConversationURL(message.conversationURL);
+    const completedStart = validGenerationStart(message.generationStartedAt)
+      ? message.generationStartedAt
+      : validGenerationStart(tab.generationStartedAt)
+        ? tab.generationStartedAt
+        : null;
+    tabs.set(tabId, {...tab, state: "idle", generationId: message.generationId,
+      generationStartedAt: null, lastSeen: Date.now(), title: completedTitle, titleSource});
+    sendNative({version: 1, type: "generation_ended", tabId,
+      generationId: message.generationId, observedAt: message.observedAt,
+      generationStartedAt: completedStart, title: completedTitle, conversationURL: completedURL});
+  }
 });
 chrome.tabs.onRemoved.addListener(tabId => {
   clearTab(tabId);
 });
 chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
-  if ((change.url || change.status === "loading") &&
-      (tabs.has(tabId) || sequences.has(tabId) || isChatGPT(change.url ?? tab.url))) invalidateTab(tabId);
-  if (typeof change.title === "string" && isChatGPT(tab.url)) {
+  const url = change.url ?? tab.url;
+
+  if (!isChatGPT(url)) {
+    if (tabs.has(tabId) || sequences.has(tabId)) clearTab(tabId);
+    return;
+  }
+
+  if (change.url) epochs.set(tabId, (epochs.get(tabId) ?? 0) + 1);
+
+  if (typeof change.title === "string") {
     updateTrackedTitle(tabId, change.title);
   }
-  if (change.status === "complete" && isChatGPT(tab.url)) {
-    probe(tabId).then(publishSnapshot).catch(() => {});
+
+  if (change.url || change.status === "complete") {
+    probe(tabId).catch(() => {});
   }
 });
 chrome.alarms.onAlarm.addListener(alarm => {

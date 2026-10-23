@@ -23,9 +23,10 @@
   let generationStartedAt = 0;
   let manuallyStopped = false;
   let lastPublishedConversationTitle = null;
+  let lastTitleScanAt = 0;
   let hasPublishedIdentity = false;
   let endTimer = null;
-  let debounceTimer = null;
+  let inspectTimer = null;
   const lifecycle = new AbortController();
 
   function cleanConversationLabel(value) {
@@ -64,10 +65,14 @@
         continue;
       }
 
-      const candidate = link.getAttribute("title") ||
-        link.getAttribute("aria-label") || link.textContent;
-      const title = cleanConversationLabel(candidate);
-      if (title) return title;
+      for (const candidate of [
+        link.textContent,
+        link.getAttribute("title"),
+        link.getAttribute("aria-label")
+      ]) {
+        const title = cleanConversationLabel(candidate);
+        if (title) return title;
+      }
     }
 
     return null;
@@ -97,7 +102,8 @@
       lifecycle.abort();
       observer.disconnect();
       cancelEnd();
-      clearTimeout(debounceTimer);
+      clearTimeout(inspectTimer);
+      inspectTimer = null;
     }
   }
 
@@ -114,22 +120,26 @@
 
   function emitState(nextState, force = false) {
     if (state === nextState && !force) return;
+
     state = nextState;
-    const conversationTitle = readActiveConversationTitle();
     publish("tab_state", {
       state,
       generationId: generationID,
-      generationStartedAt: state === STATES.GENERATING && generationStartedAt > 0
-        ? generationStartedAt
-        : null,
-      conversationTitle
+      generationStartedAt:
+        state === STATES.GENERATING && generationStartedAt > 0
+          ? generationStartedAt
+          : null,
+      conversationTitle: lastPublishedConversationTitle
     });
-    lastPublishedConversationTitle = conversationTitle;
     hasPublishedIdentity = true;
   }
 
   function publishConversationTitleIfChanged() {
     if (!hasPublishedIdentity) return;
+    const now = Date.now();
+    if (now - lastTitleScanAt < 1000) return;
+    lastTitleScanAt = now;
+
     const conversationTitle = readActiveConversationTitle();
     if (conversationTitle === lastPublishedConversationTitle) return;
 
@@ -147,69 +157,133 @@
   }
 
   function resetNavigation() {
+    const previous = new URL(currentURL);
+    const next = new URL(location.href);
+    const assigningNewChatURL =
+      previous.origin === "https://chatgpt.com" &&
+      next.origin === previous.origin &&
+      previous.pathname === "/" &&
+      /^\/c\/[A-Za-z0-9-]+\/?$/.test(next.pathname);
+    const wasConfirmingEnd = endTimer !== null;
+
+    const preserveGeneration =
+      assigningNewChatURL &&
+      state === STATES.GENERATING &&
+      generationID !== null &&
+      !manuallyStopped &&
+      (
+        wasConfirmingEnd ||
+        findVisible(SELECTORS.stop) !== null
+      );
+
     cancelEnd();
+
     routeRevision += 1;
+    currentURL = location.href;
+
+    lastPublishedConversationTitle = null;
+    lastTitleScanAt = 0;
+    hasPublishedIdentity = false;
+
+    if (preserveGeneration) {
+      emitState(STATES.GENERATING, true);
+      return;
+    }
+
     generationID = null;
     generationStartedAt = 0;
     manuallyStopped = false;
-    lastPublishedConversationTitle = null;
-    hasPublishedIdentity = false;
-    currentURL = location.href;
     emitState(STATES.UNKNOWN, true);
+  }
+
+  function scheduleInspection() {
+    if (inspectTimer !== null) return;
+
+    inspectTimer = setTimeout(() => {
+      inspectTimer = null;
+      inspectState();
+      publishConversationTitleIfChanged();
+    }, 150);
   }
 
   function inspectState() {
     if (lifecycle.signal.aborted) return;
+
     if (currentURL !== location.href) {
       resetNavigation();
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(inspectState, 200);
+      scheduleInspection();
       return;
     }
+
     if (findVisible(SELECTORS.stop)) {
       cancelEnd();
+
       if (state !== STATES.GENERATING) {
         generationID = `${Date.now()}-${++sequence}`;
         generationStartedAt = Date.now();
         manuallyStopped = false;
       }
+
       emitState(STATES.GENERATING);
       return;
     }
+
     if (!hasComposer()) {
       cancelEnd();
       generationID = null;
+      generationStartedAt = 0;
       emitState(STATES.UNKNOWN);
       return;
     }
+
     if (state !== STATES.GENERATING || manuallyStopped) {
       cancelEnd();
       emitState(STATES.IDLE);
       return;
     }
+
     if (endTimer !== null) return;
+
     const endedGeneration = generationID;
     const endedURL = currentURL;
     const observedEnd = Date.now();
+
     endTimer = setTimeout(() => {
-      endTimer = null;
-      if (currentURL !== location.href || endedURL !== location.href || !hasComposer()) {
+      if (currentURL !== location.href || endedURL !== location.href) {
         resetNavigation();
+        scheduleInspection();
         return;
       }
+
+      endTimer = null;
+
+      if (!hasComposer()) {
+        generationID = null;
+        generationStartedAt = 0;
+        emitState(STATES.UNKNOWN);
+        return;
+      }
+
       if (findVisible(SELECTORS.stop)) return;
-      const confirmedEnd = generationID === endedGeneration && !manuallyStopped &&
-        observedEnd - generationStartedAt >= 800;
+
+      const confirmedEnd =
+        generationID !== null &&
+        generationID === endedGeneration &&
+        generationStartedAt > 0 &&
+        observedEnd >= generationStartedAt &&
+        !manuallyStopped;
+
       if (confirmedEnd) {
-        state = STATES.IDLE;
         publish("generation_ended", {
           state: STATES.IDLE,
           generationId: endedGeneration,
-          conversationTitle: readActiveConversationTitle()
+          generationStartedAt,
+          conversationTitle: readActiveConversationTitle(),
+          conversationURL: currentConversationURL()
         });
-      } else {
-        emitState(STATES.IDLE);
       }
+
+      emitState(STATES.IDLE);
     }, 1200);
   }
 
@@ -219,16 +293,23 @@
       manuallyStopped = true;
     }
   }
+
+  function currentConversationURL() {
+    const url = new URL(location.href);
+
+    if (url.origin !== "https://chatgpt.com" || !/^\/c\/[A-Za-z0-9-]+\/?$/.test(url.pathname)) {
+      return null;
+    }
+
+    return url.origin + url.pathname.replace(/\/$/, "");
+  }
+
   document.addEventListener("pointerdown", noteStop, {capture: true, signal: lifecycle.signal});
   document.addEventListener("click", noteStop, {capture: true, signal: lifecycle.signal});
   document.addEventListener("keydown", noteStop, {capture: true, signal: lifecycle.signal});
 
   const observer = new MutationObserver(() => {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      inspectState();
-      publishConversationTitleIfChanged();
-    }, 200);
+    scheduleInspection();
   });
   const observationOptions = {
     childList: true, subtree: true, attributes: true, characterData: true,
@@ -236,13 +317,12 @@
   };
   observer.observe(document.documentElement, observationOptions);
   window.addEventListener("popstate", () => {
-    resetNavigation();
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(inspectState, 200);
+    scheduleInspection();
   }, {signal: lifecycle.signal});
   window.addEventListener("pagehide", () => {
     cancelEnd();
-    clearTimeout(debounceTimer);
+    clearTimeout(inspectTimer);
+    inspectTimer = null;
     observer.disconnect();
     generationID = null;
     emitState(STATES.UNKNOWN);

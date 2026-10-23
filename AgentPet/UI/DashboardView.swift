@@ -117,7 +117,12 @@ struct DashboardView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Divider()
-                        LabeledContent("Recent / historical", value: "\(recentTasks.count)")
+                        LabeledContent(
+                            "Recent / historical",
+                            value: recentTasks.count > 12
+                                ? "Showing 12 of \(recentTasks.count)"
+                                : "\(recentTasks.count)"
+                        )
                         if recentTasks.isEmpty {
                             Text("No recent threads")
                                 .foregroundStyle(.secondary)

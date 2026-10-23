@@ -88,9 +88,14 @@ struct PetView: View {
             TimelineView(
                 .animation(
                     minimumInterval: 1.0 / 15.0,
-                    paused: model.reduceMotion
-                        && player.effect == nil
-                        && player.playback.clipID.hasPrefix("idle.")
+                    paused: player.effect == nil &&
+                        (
+                            model.isPetPaused ||
+                            (
+                                model.reduceMotion &&
+                                player.playback.clipID.hasPrefix("idle.")
+                            )
+                        )
                 )
             ) { timeline in
                 let manifest = assets.manifest

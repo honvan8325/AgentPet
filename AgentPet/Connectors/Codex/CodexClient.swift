@@ -463,8 +463,9 @@ final class CodexClient: ObservableObject {
                 metadataMisses.removeValue(forKey: thread.id)
                 metadataRetryAfter.removeValue(forKey: thread.id)
             }
+            let resolvedPage = page.map { preservingKnownTitle($0) }
             let mapped = threads.filter { threadIDs.contains($0.id) }
-            threads = Array(uniqueThreads(page + mapped).prefix(pageSize + mapped.count))
+            threads = Array(uniqueThreads(resolvedPage + mapped).prefix(pageSize + mapped.count))
             errorMessage = nil
         } catch {
             guard generation == connectionGeneration else { return }
@@ -515,52 +516,59 @@ final class CodexClient: ObservableObject {
         _ id: String,
         refreshIfPlaceholder: Bool = false
     ) async -> CodexThread? {
-        guard connectionState == .connected else { return nil }
+        guard connectionState == .connected else {
+            return nil
+        }
+
         let generation = connectionGeneration
-        if let cached = threads.first(where: { $0.id == id }),
-           !refreshIfPlaceholder || !Self.isPlaceholderTitle(cached.title) {
-            return cached
-        }
+        let direct = threads.first { $0.id == id }
         let sessionMatches = threads.filter { $0.sessionID == id }
-        if sessionMatches.count == 1,
-           let cached = sessionMatches.first,
+
+        guard direct != nil || sessionMatches.count <= 1 else {
+            return nil
+        }
+
+        let cached = direct ?? sessionMatches.first
+        let resolvedThreadID = cached?.id ?? id
+
+        if let cached,
            !refreshIfPlaceholder || !Self.isPlaceholderTitle(cached.title) {
             return cached
         }
-        if sessionMatches.count > 1 { return nil }
-        if let lookup = metadataLookups[id] {
+
+        if let lookup = metadataLookups[resolvedThreadID] {
             let thread = await lookup.task.value.thread
             return generation == connectionGeneration ? thread : nil
         }
-        if let miss = metadataMisses[id], Date().timeIntervalSince(miss) < 30 { return nil }
-        if let retryAfter = metadataRetryAfter[id], retryAfter > Date() { return nil }
+        if let miss = metadataMisses[resolvedThreadID], Date().timeIntervalSince(miss) < 30 { return nil }
+        if let retryAfter = metadataRetryAfter[resolvedThreadID], retryAfter > Date() { return nil }
         let lookupID = UUID()
         let task = Task<MetadataLookupResult, Never> { [weak self] in
             guard let self else { return MetadataLookupResult(thread: nil, isConfirmedMiss: false) }
-            return await self.readThreadMetadata(id, generation: generation)
+            return await self.readThreadMetadata(resolvedThreadID, generation: generation)
         }
-        metadataLookups[id] = MetadataLookup(id: lookupID, task: task)
+        metadataLookups[resolvedThreadID] = MetadataLookup(id: lookupID, task: task)
         let result = await task.value
         guard generation == connectionGeneration else { return nil }
-        if metadataLookups[id]?.id == lookupID {
-            metadataLookups.removeValue(forKey: id)
+        if metadataLookups[resolvedThreadID]?.id == lookupID {
+            metadataLookups.removeValue(forKey: resolvedThreadID)
             if result.isConfirmedMiss {
-                metadataMisses[id] = Date()
-                metadataRetryAfter.removeValue(forKey: id)
+                metadataMisses[resolvedThreadID] = Date()
+                metadataRetryAfter.removeValue(forKey: resolvedThreadID)
                 if metadataMisses.count > 200,
                    let oldest = metadataMisses.min(by: { $0.value < $1.value })?.key {
                     metadataMisses.removeValue(forKey: oldest)
                 }
             } else if result.thread == nil {
-                metadataRetryAfter[id] = Date().addingTimeInterval(2)
-                metadataMisses.removeValue(forKey: id)
+                metadataRetryAfter[resolvedThreadID] = Date().addingTimeInterval(2)
+                metadataMisses.removeValue(forKey: resolvedThreadID)
                 if metadataRetryAfter.count > 200,
                    let oldest = metadataRetryAfter.min(by: { $0.value < $1.value })?.key {
                     metadataRetryAfter.removeValue(forKey: oldest)
                 }
             } else {
-                metadataRetryAfter.removeValue(forKey: id)
-                metadataMisses.removeValue(forKey: id)
+                metadataRetryAfter.removeValue(forKey: resolvedThreadID)
+                metadataMisses.removeValue(forKey: resolvedThreadID)
             }
         }
         return result.thread
@@ -624,12 +632,25 @@ final class CodexClient: ObservableObject {
         if shouldClearUsage { setUsage(nil) }
     }
 
+    private func preservingKnownTitle(_ incoming: CodexThread) -> CodexThread {
+        var result = incoming
+
+        if Self.isPlaceholderTitle(result.title),
+           let previous = threads.first(where: { $0.id == incoming.id }),
+           !Self.isPlaceholderTitle(previous.title) {
+            result.title = previous.title
+        }
+
+        return result
+    }
+
     private func merge(_ additions: [CodexThread], preserving extraIDs: Set<String> = []) {
         for thread in additions {
-            if let index = threads.firstIndex(where: { $0.id == thread.id }) {
-                threads[index] = thread
+            let resolved = preservingKnownTitle(thread)
+            if let index = threads.firstIndex(where: { $0.id == resolved.id }) {
+                threads[index] = resolved
             } else {
-                threads.append(thread)
+                threads.append(resolved)
             }
         }
         let recent = threads.sorted {
