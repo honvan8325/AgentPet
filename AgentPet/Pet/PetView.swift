@@ -463,7 +463,7 @@ private struct ConnectorBubbleView: View {
                 scale: zoom,
                 assets: assets
             )
-            .offset(y: -bubble.size.height * zoom * 0.13)
+            .offset(y: -bubble.size.height * zoom * 0.13 + zoom)
             .allowsHitTesting(false)
         }
         .frame(width: width, height: height, alignment: .center)
