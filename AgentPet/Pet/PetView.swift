@@ -84,6 +84,31 @@ struct PetView: View {
 
     var body: some View {
         let scene = metrics
+
+        let codexChats = sessions.sessions.values
+            .filter { $0.status == .running }
+            .sorted {
+                if $0.updatedAt == $1.updatedAt {
+                    return $0.sessionID < $1.sessionID
+                }
+                return $0.updatedAt > $1.updatedAt
+            }
+            .map { session in
+                guard let title = session.title,
+                      !title.isEmpty else {
+                    return "Untitled chat"
+                }
+                return title
+            }
+
+        let webChats = chatGPTWeb.generatingTabs.map { tab in
+            guard let title = tab.title,
+                  !title.isEmpty else {
+                return "Untitled chat"
+            }
+            return title
+        }
+
         ZStack(alignment: .topLeading) {
             TimelineView(
                 .animation(
@@ -162,30 +187,79 @@ struct PetView: View {
             }
 
             if let bubble = assets.hudImage("bubble") {
-                if sessions.runningCount > 0 {
-                    Button { model.openDashboard() } label: {
-                        ConnectorBubbleView(count: sessions.runningCount, bubble: bubble,
-                                            zoom: scene.zoom, assets: assets)
+                if !codexChats.isEmpty {
+                    Button {
+                        model.openDashboard()
+                    } label: {
+                        ConnectorBubbleView(
+                            count: codexChats.count,
+                            bubble: bubble,
+                            zoom: scene.zoom,
+                            assets: assets,
+                            chatNames: codexChats
+                        )
                     }
                     .buttonStyle(.plain)
+                    .contentShape(Rectangle())
                     .zIndex(1)
-                    .offset(x: scene.bubbleOrigin.x * scene.zoom, y: scene.bubbleOrigin.y * scene.zoom)
-                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                    .animation(model.reduceMotion ? nil : .easeOut(duration: 0.15), value: sessions.runningCount > 0)
-                    .accessibilityLabel("Codex: \(sessions.runningCount) running")
+                    .offset(
+                        x: scene.bubbleOrigin.x * scene.zoom,
+                        y: scene.bubbleOrigin.y * scene.zoom
+                    )
+                    .transition(
+                        .opacity.combined(
+                            with: .scale(scale: 0.9)
+                        )
+                    )
+                    .animation(
+                        model.reduceMotion
+                            ? nil
+                            : .easeOut(duration: 0.15),
+                        value: !codexChats.isEmpty
+                    )
+                    .accessibilityLabel(
+                        "Codex: \(codexChats.count) running"
+                    )
+                    .accessibilityHint(codexChats.joined(separator: "\n"))
                 }
-                if chatGPTWeb.generatingCount > 0 {
-                    let origin = sessions.runningCount > 0 ? scene.chatGPTBubbleOrigin : scene.bubbleOrigin
-                    Button { chatGPTWeb.openActiveChatGPT() } label: {
-                        ConnectorBubbleView(count: chatGPTWeb.generatingCount, bubble: bubble,
-                                            zoom: scene.zoom, assets: assets)
+                if !webChats.isEmpty {
+                    let origin = !codexChats.isEmpty
+                        ? scene.chatGPTBubbleOrigin
+                        : scene.bubbleOrigin
+
+                    Button {
+                        chatGPTWeb.openActiveChatGPT()
+                    } label: {
+                        ConnectorBubbleView(
+                            count: webChats.count,
+                            bubble: bubble,
+                            zoom: scene.zoom,
+                            assets: assets,
+                            chatNames: webChats
+                        )
                     }
                     .buttonStyle(.plain)
+                    .contentShape(Rectangle())
                     .zIndex(1)
-                    .offset(x: origin.x * scene.zoom, y: origin.y * scene.zoom)
-                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                    .animation(model.reduceMotion ? nil : .easeOut(duration: 0.15), value: chatGPTWeb.generatingCount > 0)
-                    .accessibilityLabel("ChatGPT Web: \(chatGPTWeb.generatingCount) generating")
+                    .offset(
+                        x: origin.x * scene.zoom,
+                        y: origin.y * scene.zoom
+                    )
+                    .transition(
+                        .opacity.combined(
+                            with: .scale(scale: 0.9)
+                        )
+                    )
+                    .animation(
+                        model.reduceMotion
+                            ? nil
+                            : .easeOut(duration: 0.15),
+                        value: !webChats.isEmpty
+                    )
+                    .accessibilityLabel(
+                        "ChatGPT Web: \(webChats.count) generating"
+                    )
+                    .accessibilityHint(webChats.joined(separator: "\n"))
                 }
             }
         }
@@ -373,6 +447,7 @@ private struct ConnectorBubbleView: View {
     let bubble: NSImage
     let zoom: CGFloat
     let assets: SpriteAtlasStore
+    let chatNames: [String]
 
     var body: some View {
         let width = bubble.size.width * zoom
@@ -392,6 +467,26 @@ private struct ConnectorBubbleView: View {
             .allowsHitTesting(false)
         }
         .frame(width: width, height: height, alignment: .center)
+        .overlay {
+            NativeTooltipHost(text: chatNames.joined(separator: "\n"))
+                .frame(width: width, height: height)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+private struct NativeTooltipHost: NSViewRepresentable {
+    let text: String
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        view.toolTip = text
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        view.toolTip = text
     }
 }
 

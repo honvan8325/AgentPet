@@ -111,30 +111,41 @@ final class SessionStore: ObservableObject {
     }
 
     func updateThreads(_ threads: [CodexThread]) {
-        self.threads = threads
+        if self.threads != threads {
+            self.threads = threads
+        }
+
         let byID = Dictionary(uniqueKeysWithValues: threads.map { ($0.id, $0) })
+        var updated = sessions
+
         for (sessionID, var session) in sessions {
             let thread: CodexThread?
 
             if let verifiedThreadID = session.threadID {
                 thread = byID[verifiedThreadID]
+            } else if let direct = byID[sessionID] {
+                thread = direct
             } else {
-                if let direct = byID[sessionID] {
-                    thread = direct
-                } else {
-                    let matches = threads.filter { $0.sessionID == sessionID }
-                    thread = matches.count == 1 ? matches.first : nil
-                }
+                let matches = threads.filter { $0.sessionID == sessionID }
+                thread = matches.count == 1 ? matches.first : nil
             }
 
-            guard let thread else { continue }
+            guard let thread else {
+                continue
+            }
+
             session.threadID = thread.id
             let incomingTitle = thread.title.trimmingCharacters(in: .whitespacesAndNewlines)
             if !incomingTitle.isEmpty &&
                 incomingTitle.caseInsensitiveCompare("Untitled thread") != .orderedSame {
                 session.title = thread.title
             }
-            sessions[sessionID] = session
+
+            updated[sessionID] = session
+        }
+
+        if updated != sessions {
+            sessions = updated
         }
     }
 
@@ -160,7 +171,10 @@ final class SessionStore: ObservableObject {
             incomingTitle.caseInsensitiveCompare("Untitled thread") != .orderedSame {
             session.title = thread.title
         }
-        sessions[sessionID] = session
+
+        if sessions[sessionID] != session {
+            sessions[sessionID] = session
+        }
     }
 
     func invalidateRuntime() {

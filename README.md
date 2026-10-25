@@ -14,14 +14,14 @@ AgentPet reports **observed states**, not assumptions: a Codex `Stop` means the 
 | Codex tracking | Observes `UserPromptSubmit`, `Stop`, `Interrupt`, and `PermissionRequest` through the Codex hook integration |
 | Usage HUD | Shows available Codex usage windows (such as 5-hour and 7-day) and remaining percentages |
 | ChatGPT Web | Observes generating ChatGPT tabs in Google Chrome through a Manifest V3 extension and native bridge |
-| Task bubbles | Shows separate counts for running Codex sessions and generating ChatGPT tabs; click to navigate |
+| Task bubbles | Shows separate counts for running Codex sessions and generating ChatGPT tabs; hover to see a compact native tooltip with active chat names, or click to navigate |
 | Dashboard | Live/recent activity, observed permission events, task duration when known, usage, connection health, and diagnostics |
 | macOS notifications | Optional event notifications with available chat titles and click-through to verified Codex threads or existing Chrome tabs |
 | Android notifications | Optional ntfy push notifications with independent event preferences and a chat-title privacy toggle |
 | Desktop preferences | Pet size, HUD, appearance, Pause, Reduce Motion, always-on-top, keep-visible, and Launch at Login |
 | Updates | Sparkle update checks and a signed appcast for published releases |
 
-> **Limitations:** Conversation titles are best-effort metadata, not guaranteed. AgentPet does not guess names from entire chats. Task bubbles intentionally **do not open hover popovers**.
+> **Limitations:** Conversation titles are best-effort metadata, not guaranteed. AgentPet does not guess names from entire chats. Hover tooltips show only available active chat names. Missing titles use a generic fallback.
 
 ## Requirements
 
@@ -79,7 +79,7 @@ The extension is designed for Google Chrome, not an arbitrary Chromium browser. 
 - **Click, double-click, or interact with the Chick** to see supported reactions; available reactions depend on its current state.
 - **Codex bubble:** Displays the number of confirmed running Codex sessions. Clicking it opens the Dashboard.
 - **ChatGPT bubble:** Displays the number of generating Chrome tabs. Clicking it attempts to activate a relevant existing ChatGPT tab.
-- **Two visible bubbles:** Use the existing diagonal layout. Hovering either bubble does **not** open a task-list popover.
+- **Two visible bubbles:** Use the existing diagonal layout. Hover either bubble to see a compact macOS-native tooltip listing active chat names for that connector. Clicking a bubble retains its existing navigation behavior.
 - **Usage HUD:** Shows available quota windows. Hover over a bar to see the corresponding percentage.
 
 The Chick adapts its visual behavior to connection/activity states and supported energy profiles. Pausing the pet pauses its animation/behavior; **it does not pause Codex tasks or stop browser monitoring**.

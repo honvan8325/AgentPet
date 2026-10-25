@@ -1,0 +1,73 @@
+{
+  "idleBehaviors": [
+    {
+      "clip": "idle.blink",
+      "weight": 3.5,
+      "cooldownSeconds": 45
+    },
+    {
+      "clip": "idle.look_left",
+      "weight": 2.7,
+      "cooldownSeconds": 57
+    },
+    {
+      "clip": "idle.look_right",
+      "weight": 2.2,
+      "cooldownSeconds": 69
+    },
+    {
+      "clip": "idle.look_up",
+      "weight": 2.0,
+      "cooldownSeconds": 81
+    },
+    {
+      "clip": "idle.head_tilt",
+      "weight": 1.8,
+      "cooldownSeconds": 93
+    },
+    {
+      "clip": "idle.stretch",
+      "weight": 1.7,
+      "cooldownSeconds": 105
+    },
+    {
+      "clip": "idle.yawn",
+      "weight": 1.6,
+      "cooldownSeconds": 117
+    },
+    {
+      "clip": "idle.sip_drink",
+      "weight": 1.6,
+      "cooldownSeconds": 129
+    },
+    {
+      "clip": "idle.groom",
+      "weight": 1.5,
+      "cooldownSeconds": 141
+    },
+    {
+      "clip": "idle.check_phone",
+      "weight": 1.5,
+      "cooldownSeconds": 153
+    },
+    {
+      "clip": "idle.doze",
+      "weight": 1.4,
+      "cooldownSeconds": 165
+    },
+    {
+      "clip": "idle.sleep",
+      "weight": 1.4,
+      "cooldownSeconds": 177
+    }
+  ],
+  "avoidImmediateRepeat": true,
+  "sleepAfterSeconds": 300,
+  "interactions": {
+    "click": "interact.boop",
+    "hover": "interact.hover_notice",
+    "dragStart": "interact.drag_pickup",
+    "drag": "interact.drag_held",
+    "dragEnd": "interact.land"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "id": "mochi",
+  "name": "Mochi",
+  "manifest": "manifest.json",
+  "bubble": "task_bubble.png",
+  "hud": "bars.png"
+}
