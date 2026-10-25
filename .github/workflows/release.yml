@@ -137,17 +137,23 @@ jobs:
           test -f "$RESOURCES/Assets.car"
           shopt -s nullglob
           THEME_DIRS=("$RESOURCES"/Themes/*/)
-          test "${#THEME_DIRS[@]}" -eq 1
-          THEME="${THEME_DIRS[0]}"
-          test "$(basename "${THEME%/}")" = "chick"
-          MANIFEST="$THEME/manifest.json"
-          test -f "$MANIFEST"
-          jq -e '.schemaVersion == 3 and .themeId == "chick" and .compatibility.legacyManifestSupportedViaAdapter == false and (.clips | length) == 88 and (.atlases | length) == 308' "$MANIFEST" >/dev/null
-          test -f "$THEME/atlases/page-000.png"
-          test -f "$THEME/atlases/page-307.png"
-          test ! -e "$THEME/source"
-          test -s "$THEME/bars.png"
-          test -s "$THEME/task_bubble.png"
+          test "${#THEME_DIRS[@]}" -gt 0
+          for THEME in "${THEME_DIRS[@]}"; do
+            THEME_ID="$(basename "${THEME%/}")"
+            MANIFEST="$THEME/manifest.json"
+            test -s "$MANIFEST"
+            jq -e --arg theme_id "$THEME_ID" \
+              '.schemaVersion == 3 and .themeId == $theme_id and .compatibility.legacyManifestSupportedViaAdapter == false and (.clips | length) == 88 and (.atlases | length) == 308' \
+              "$MANIFEST" >/dev/null
+            while IFS= read -r atlas; do
+              test -s "$THEME/$atlas"
+            done < <(jq -er '.atlases[].file' "$MANIFEST")
+            BARS_FILE="$(jq -er '.hud.barsFile' "$MANIFEST")"
+            BUBBLE_FILE="$(jq -er '.hud.bubbleFile' "$MANIFEST")"
+            test -s "$THEME/$BARS_FILE"
+            test -s "$THEME/$BUBBLE_FILE"
+            test ! -e "$THEME/source"
+          done
           test -d "$APP/Contents/Frameworks/Sparkle.framework"
           test "$(lipo -archs "$HELPER")" = "arm64"
           codesign --verify --strict "$APP"
