@@ -142,6 +142,7 @@ jobs:
             THEME_ID="$(basename "${THEME%/}")"
             MANIFEST="$THEME/manifest.json"
             test -s "$MANIFEST"
+            test -s "$THEME/theme.json"
             jq -e --arg theme_id "$THEME_ID" \
               '.schemaVersion == 3 and .themeId == $theme_id and .compatibility.legacyManifestSupportedViaAdapter == false and (.clips | length) == 88 and (.atlases | length) == 308' \
               "$MANIFEST" >/dev/null

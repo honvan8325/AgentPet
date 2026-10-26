@@ -68,14 +68,34 @@ final class AgentPetModel: ObservableObject {
             updaterController = nil
         }
 
-        let savedThemeID = UserDefaults.standard.string(forKey: "selectedTheme")
-        let savedTheme = PetTheme.available.first { $0.id == savedThemeID } ?? PetTheme.defaultTheme
-        if SpriteAtlasStore.shared.selectTheme(savedTheme) {
-            selectedTheme = savedTheme
-        } else if let activeTheme = SpriteAtlasStore.shared.activeTheme {
+        let savedThemeID = UserDefaults.standard.string(
+            forKey: "selectedTheme"
+        )
+
+        let defaultTheme = PetTheme.defaultTheme
+
+        let preferredTheme = PetTheme.available.first {
+            $0.id == savedThemeID
+        } ?? defaultTheme
+
+        let assets = SpriteAtlasStore.shared
+
+        let loaded = assets.selectTheme(preferredTheme)
+            || (
+                preferredTheme != defaultTheme
+                && assets.selectTheme(defaultTheme)
+            )
+
+        if loaded, let activeTheme = assets.activeTheme {
             selectedTheme = activeTheme
+            if savedThemeID != activeTheme.id {
+                UserDefaults.standard.set(
+                    activeTheme.id,
+                    forKey: "selectedTheme"
+                )
+            }
         } else {
-            selectedTheme = PetTheme.defaultTheme
+            selectedTheme = defaultTheme
             settingsError = "No usable mascot theme is bundled with this app."
         }
     }
@@ -530,11 +550,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let model = AgentPetModel()
     private var statusItem: NSStatusItem!
     private var pet: PetPanelController!
-    private var dashboard: DashboardWindowController!
-    private var settings: SettingsWindowController!
-    private var onboarding: OnboardingWindowController!
+    private lazy var dashboard = DashboardWindowController(model: model)
+    private lazy var settings = SettingsWindowController(model: model)
+    private lazy var onboarding = OnboardingWindowController(model: model)
     private var terminationPending = false
     private var pendingNotificationTarget: PendingNotificationTarget?
+    private var didFinishLaunching = false
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
@@ -543,9 +564,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         pet = PetPanelController(model: model)
-        dashboard = DashboardWindowController(model: model)
-        settings = SettingsWindowController(model: model)
-        onboarding = OnboardingWindowController(model: model)
         model.onOpenDashboard = { [weak self] in self?.dashboard.show() }
         model.onOpenSettings = { [weak self] in self?.settings.show() }
         model.onHidePet = { [weak self] in self?.pet.hide() }
@@ -562,6 +580,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu?.delegate = self
         pet.show()
         model.start()
+        didFinishLaunching = true
         if let target = pendingNotificationTarget {
             pendingNotificationTarget = nil
             handleNotificationOpen(
@@ -582,7 +601,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         generationID: String?,
         conversationURL: String?
     ) {
-        guard dashboard != nil else {
+        guard didFinishLaunching else {
             pendingNotificationTarget = PendingNotificationTarget(
                 source: source,
                 threadID: threadID,
