@@ -2,7 +2,7 @@
 
 **A native macOS desktop companion for Codex and ChatGPT Web.**
 
-AgentPet puts an animated pixel-art Chick on your desktop. It reacts to observable AI activity, shows available Codex usage, and can notify you when a turn ends or an event needs attention—on your Mac or, optionally, on Android through ntfy.
+AgentPet puts a selectable animated pixel-art companion on your desktop: Boo, Chick, Mochi, Neko, or Pingu. It reacts to observable AI activity, shows available Codex usage, and can notify you when a turn ends or an event needs attention—on your Mac or, optionally, on Android through ntfy.
 
 AgentPet reports **observed states**, not assumptions: a Codex `Stop` means the turn ended, not that it succeeded; a permission event may no longer be pending; and a ChatGPT response is considered finished only when the browser connector confirms an end event.
 
@@ -10,7 +10,7 @@ AgentPet reports **observed states**, not assumptions: a Codex `Stop` means the 
 
 | Feature | What it does |
 | --- | --- |
-| Pixel-art Chick | Animated desktop pet with idle, work, connection, energy, and interaction behaviors |
+| Pet themes | Choose Boo, Chick, Mochi, Neko, or Pingu in Settings; each has idle, work, connection, energy, and interaction behaviors |
 | Codex tracking | Observes `UserPromptSubmit`, `Stop`, `Interrupt`, and `PermissionRequest` through the Codex hook integration |
 | Usage HUD | Shows available Codex usage windows (such as 5-hour and 7-day) and remaining percentages |
 | ChatGPT Web | Observes generating ChatGPT tabs in Google Chrome through a Manifest V3 extension and native bridge |
@@ -31,7 +31,7 @@ AgentPet reports **observed states**, not assumptions: a Codex `Stop` means the 
 - **Build from source:** Xcode 16 or later with Swift 6 support; internet access to resolve the Sparkle Swift package.
 - **Android push (optional):** The [ntfy](https://ntfy.sh/) Android app; no separate AgentPet Android app is required.
 
-Codex, Chrome, and mobile notifications are separate capabilities. The Chick can stay visible even when a connector is unavailable.
+Codex, Chrome, and mobile notifications are separate capabilities. The pet can stay visible even when a connector is unavailable.
 
 ## Install
 
@@ -73,10 +73,11 @@ The extension is designed for Google Chrome, not an arbitrary Chromium browser. 
 
 ## Using AgentPet
 
-### Chick and task bubbles
+### Themes and task bubbles
 
-- **Drag the Chick** to reposition it on your desktop.
-- **Click, double-click, or interact with the Chick** to see supported reactions; available reactions depend on its current state.
+- **Choose Boo, Chick, Mochi, Neko, or Pingu** in **Settings → Appearance**. AgentPet remembers the selected theme.
+- **Drag the pet** to reposition it on your desktop.
+- **Click, double-click, or interact with the pet** to see supported reactions; available reactions depend on its current state.
 - **Codex bubble:** Displays the number of confirmed running Codex sessions. Clicking it opens the Dashboard.
 - **ChatGPT bubble:** Displays the number of generating Chrome tabs. Clicking it attempts to activate a relevant existing ChatGPT tab.
 - **Two visible bubbles:** Use the existing diagonal layout. Hover either bubble to see a compact macOS-native tooltip listing active chat names for that connector. Clicking a bubble retains its existing navigation behavior.
@@ -135,7 +136,7 @@ Mobile settings are independent of macOS notification settings. ChatGPT completi
 
 | Group | Main controls |
 | --- | --- |
-| Appearance | Chick theme, Small/Medium/Large/Custom size, usage HUD, light/dark/system appearance |
+| Appearance | Boo, Chick, Mochi, Neko, or Pingu theme; Small/Medium/Large/Custom size; usage HUD; light/dark/system appearance |
 | Pet Behavior | Reduce Motion, Pause AgentPet |
 | Codex Integration | Connection state, hook state, reconnect, enable/repair/retry/disable integration |
 | ChatGPT Web | Connection and generating-tab status, open ChatGPT, extension setup and repair |
@@ -144,7 +145,7 @@ Mobile settings are independent of macOS notification settings. ChatGPT completi
 | Desktop | Always on top, keep fully visible, Launch at Login |
 | Updates | Version, manual update check, automatic checks/downloads when available |
 
-Pet size presets are Small **1.25×**, Medium **1.5×**, and Large **2.0×**. Custom size ranges from **1.0× to 3.0×** in steps of **0.1×**. Chick is currently the only bundled theme.
+Pet size presets are Small **1.25×**, Medium **1.5×**, and Large **2.0×**. Custom size ranges from **1.0× to 3.0×** in steps of **0.1×**. Boo, Chick, Mochi, Neko, and Pingu are bundled themes; the selected theme is restored when AgentPet launches.
 
 ## How it works
 
@@ -172,9 +173,9 @@ Chrome `Tab.title` and the currently selected conversation navigation label may 
 
 ### Rendering and assets
 
-Chick uses **Asset System V3** with **88 animation clips** (64 behavior clips and 24 transitions), **5 energy profiles**, **6 moods**, **2,640 animation variants**, **19,680 individually timed frames**, and **308 atlas pages**. Sprite frames are displayed with nearest-neighbor sampling to preserve pixel edges. Atlas pages are loaded on demand with a bounded in-memory cache rather than preloading the entire theme.
+All five themes use **Asset System V3**: each has **88 animation clips**, **308 atlas pages** at **512×512**, and **64×64** sprite frames rendered on a **128×128** output canvas at scale **2**. Theme discovery reads each small `theme.json`; only the selected theme's full manifest is loaded. Atlas PNGs load on demand into an eight-page LRU cache, which is purged when the theme changes or macOS reports memory pressure. Sprite frames use nearest-neighbor sampling to preserve pixel edges.
 
-Runtime assets live in `AgentPet/Resources/Themes/chick/` and include `manifest.json`, `behavior.json`, atlas PNGs, HUD/bubble sprites, and effect frames. Editable source art and asset-generation utilities are not part of this repository.
+Runtime assets live in `AgentPet/Resources/Themes/{boo,chick,mochi,neko,pingu}/`. Each theme contains `theme.json`, `manifest.json`, `behavior.json`, `anchors.json`, `atlases/`, `effects/`, and HUD assets. Editable source art and asset-generation utilities are not part of this repository.
 
 ## Build from source
 
@@ -233,7 +234,12 @@ AgentPet/
       manifest.json
       background.js
       content.js
-    Themes/chick/                  # V3 manifests, atlases, HUD, effects
+    Themes/
+      boo/
+      chick/                       # theme metadata, V3 manifest, atlases, HUD, effects
+      mochi/
+      neko/
+      pingu/
   Assets.xcassets/
   Info.plist
 AgentPetHook/main.swift

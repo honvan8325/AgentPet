@@ -1,0 +1,7 @@
+{
+  "id": "boo",
+  "name": "Boo",
+  "manifest": "manifest.json",
+  "bubble": "task_bubble.png",
+  "hud": "bars.png"
+}
