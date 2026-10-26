@@ -109,6 +109,42 @@ struct PetView: View {
             return title
         }
 
+        let bubble = assets.hudImage("bubble")
+        let bubbleOrigins: [CGPoint] = {
+            guard bubble != nil else { return [] }
+
+            var origins: [CGPoint] = []
+
+            if !codexChats.isEmpty {
+                origins.append(scene.bubbleOrigin)
+            }
+
+            if !webChats.isEmpty {
+                origins.append(
+                    codexChats.isEmpty
+                        ? scene.bubbleOrigin
+                        : scene.chatGPTBubbleOrigin
+                )
+            }
+
+            return origins
+        }()
+
+        let bubbleExclusionRects = bubbleOrigins.map { origin in
+            CGRect(
+                x: (
+                    origin.x
+                    - scene.spriteOrigin.x
+                    - scene.canvasWidth * 0.09
+                ) * scene.zoom,
+                y: (
+                    origin.y - scene.spriteOrigin.y
+                ) * scene.zoom,
+                width: scene.bubbleWidth * scene.zoom,
+                height: scene.bubbleHeight * scene.zoom
+            )
+        }
+
         ZStack(alignment: .topLeading) {
             TimelineView(
                 .animation(
@@ -158,6 +194,7 @@ struct PetView: View {
             }
 
             PetInteractionView(
+                bubbleExclusionRects: bubbleExclusionRects,
                 onClick: engine.click,
                 onDoubleClick: engine.doubleClick,
                 onRepeatedClick: engine.repeatedClick,
@@ -186,22 +223,20 @@ struct PetView: View {
                 .offset(x: scene.hudOrigin.x * scene.zoom, y: scene.hudOrigin.y * scene.zoom)
             }
 
-            if let bubble = assets.hudImage("bubble") {
+            if let bubble {
                 if !codexChats.isEmpty {
-                    Button {
-                        model.openDashboard()
-                    } label: {
-                        ConnectorBubbleView(
-                            count: codexChats.count,
-                            bubble: bubble,
-                            zoom: scene.zoom,
-                            assets: assets,
-                            chatNames: codexChats
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .contentShape(Rectangle())
-                    .zIndex(1)
+                    ConnectorBubbleView(
+                        count: codexChats.count,
+                        bubble: bubble,
+                        zoom: scene.zoom,
+                        assets: assets,
+                        chatNames: codexChats,
+                        accessibilityLabel: "Codex running tasks",
+                        onClick: {
+                            model.openDashboard()
+                        }
+                    )
+                    .zIndex(2)
                     .offset(
                         x: scene.bubbleOrigin.x * scene.zoom,
                         y: scene.bubbleOrigin.y * scene.zoom
@@ -217,30 +252,24 @@ struct PetView: View {
                             : .easeOut(duration: 0.15),
                         value: !codexChats.isEmpty
                     )
-                    .accessibilityLabel(
-                        "Codex: \(codexChats.count) running"
-                    )
-                    .accessibilityHint(codexChats.joined(separator: "\n"))
                 }
                 if !webChats.isEmpty {
                     let origin = !codexChats.isEmpty
                         ? scene.chatGPTBubbleOrigin
                         : scene.bubbleOrigin
 
-                    Button {
-                        chatGPTWeb.openActiveChatGPT()
-                    } label: {
-                        ConnectorBubbleView(
-                            count: webChats.count,
-                            bubble: bubble,
-                            zoom: scene.zoom,
-                            assets: assets,
-                            chatNames: webChats
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .contentShape(Rectangle())
-                    .zIndex(1)
+                    ConnectorBubbleView(
+                        count: webChats.count,
+                        bubble: bubble,
+                        zoom: scene.zoom,
+                        assets: assets,
+                        chatNames: webChats,
+                        accessibilityLabel: "ChatGPT generating chats",
+                        onClick: {
+                            chatGPTWeb.openActiveChatGPT()
+                        }
+                    )
+                    .zIndex(2)
                     .offset(
                         x: origin.x * scene.zoom,
                         y: origin.y * scene.zoom
@@ -256,10 +285,6 @@ struct PetView: View {
                             : .easeOut(duration: 0.15),
                         value: !webChats.isEmpty
                     )
-                    .accessibilityLabel(
-                        "ChatGPT Web: \(webChats.count) generating"
-                    )
-                    .accessibilityHint(webChats.joined(separator: "\n"))
                 }
             }
         }
@@ -442,12 +467,56 @@ private struct PixelHUDView: View {
     }
 }
 
+private struct BubbleTooltipButton: NSViewRepresentable {
+    let text: String
+    let label: String
+    let onClick: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onClick: onClick)
+    }
+
+    func makeNSView(context: Context) -> NSButton {
+        let button = NSButton()
+
+        button.title = ""
+        button.isBordered = false
+        button.isTransparent = true
+        button.focusRingType = .none
+
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.click)
+
+        return button
+    }
+
+    func updateNSView(_ button: NSButton, context: Context) {
+        context.coordinator.onClick = onClick
+        button.toolTip = text
+        button.setAccessibilityLabel(label)
+    }
+
+    final class Coordinator: NSObject {
+        var onClick: () -> Void
+
+        init(onClick: @escaping () -> Void) {
+            self.onClick = onClick
+        }
+
+        @objc func click() {
+            onClick()
+        }
+    }
+}
+
 private struct ConnectorBubbleView: View {
     let count: Int
     let bubble: NSImage
     let zoom: CGFloat
     let assets: SpriteAtlasStore
     let chatNames: [String]
+    let accessibilityLabel: String
+    let onClick: () -> Void
 
     var body: some View {
         let width = bubble.size.width * zoom
@@ -458,6 +527,7 @@ private struct ConnectorBubbleView: View {
                 .interpolation(.none)
                 .frame(width: width, height: height)
                 .scaleEffect(x: -1, y: 1)
+                .allowsHitTesting(false)
             PixelCountView(
                 count: count,
                 scale: zoom,
@@ -468,25 +538,13 @@ private struct ConnectorBubbleView: View {
         }
         .frame(width: width, height: height, alignment: .center)
         .overlay {
-            NativeTooltipHost(text: chatNames.joined(separator: "\n"))
-                .frame(width: width, height: height)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+            BubbleTooltipButton(
+                text: chatNames.joined(separator: "\n"),
+                label: accessibilityLabel,
+                onClick: onClick
+            )
+            .frame(width: width, height: height)
         }
-    }
-}
-
-private struct NativeTooltipHost: NSViewRepresentable {
-    let text: String
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        view.toolTip = text
-        return view
-    }
-
-    func updateNSView(_ view: NSView, context: Context) {
-        view.toolTip = text
     }
 }
 
@@ -514,6 +572,7 @@ private struct PixelCountView: View {
 }
 
 private struct PetInteractionView: NSViewRepresentable {
+    let bubbleExclusionRects: [CGRect]
     let onClick: () -> Void
     let onDoubleClick: () -> Void
     let onRepeatedClick: () -> Void
@@ -533,6 +592,7 @@ private struct PetInteractionView: NSViewRepresentable {
     func updateNSView(_ view: PetInteractionNSView, context: Context) { update(view) }
 
     private func update(_ view: PetInteractionNSView) {
+        view.bubbleExclusionRects = bubbleExclusionRects
         view.onClick = onClick
         view.onDoubleClick = onDoubleClick
         view.onRepeatedClick = onRepeatedClick
@@ -546,6 +606,8 @@ private struct PetInteractionView: NSViewRepresentable {
 }
 
 private final class PetInteractionNSView: NSView {
+    var bubbleExclusionRects: [CGRect] = []
+
     var onClick: (() -> Void)?
     var onDoubleClick: (() -> Void)?
     var onRepeatedClick: (() -> Void)?
@@ -565,6 +627,10 @@ private final class PetInteractionNSView: NSView {
     override var isOpaque: Bool { false }
     override var mouseDownCanMoveWindow: Bool { false }
 
+    override var isFlipped: Bool {
+        true
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach(removeTrackingArea)
@@ -573,7 +639,16 @@ private final class PetInteractionNSView: NSView {
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         let local = convert(point, from: superview)
-        return bounds.contains(local) ? super.hitTest(point) : nil
+
+        guard bounds.contains(local) else {
+            return nil
+        }
+
+        if bubbleExclusionRects.contains(where: { $0.contains(local) }) {
+            return nil
+        }
+
+        return super.hitTest(point)
     }
 
     override func mouseDown(with event: NSEvent) {
